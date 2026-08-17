@@ -290,9 +290,10 @@ class MainWindow(QMainWindow):
 
         self.dataset_label.setText(
             f"Processing: {data['video']} | "
-            f"Frames: {data['frames']} | "
+            f"Frames: {data['frames']:,} | "
             f"FPS: {data['fps']:.0f} | "
-            f"Speed: {data['speed']:.2f}x"
+            f"Speed: {data['speed']:.2f}x | "
+            f"Time: {data['time']}"
         )
 
     # --------------------------------------------------
