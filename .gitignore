@@ -4,3 +4,17 @@ Datasets/
 *.jpg
 .venv/
 .complete
+
+# Sensitive files that should never be committed to a public repository
+.env
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+id_rsa
+id_dsa
+*.asc
+# OS generated files
+.DS_Store
+Thumbs.db
