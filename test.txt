@@ -1,0 +1,1 @@
+ffmpeg -hide_banner -hwaccel cuda -hwaccel_output_format cuda -i "S:\Thotta_Nee_Keta\Projects\Frame-Generator\Datasets\squash 8 min.mp4" -f null NUL

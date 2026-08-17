@@ -1,0 +1,199 @@
+PS S:\Thotta_Nee_Keta\Projects\Frame-Generator> ffmpeg -hide_banner -hwaccel cuda -hwaccel_output_format cuda -i "S:\Thotta_Nee_Keta\Projects\Frame-Generator\Datasets\squash 8 min.mp4" -f null NUL
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'S:\Thotta_Nee_Keta\Projects\Frame-Generator\Datasets\squash 8 min.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf62.3.100
+  Duration: 00:08:07.04, start: 0.000000, bitrate: 508 kb/s
+  Stream #0:0[0x1](und): Video: h264 (Main) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1280x720 [SAR 1:1 DAR 16:9], 452 kb/s, 50fps, 50 tbr, 12800 tbn (default)
+    Metadata:
+      handler_name    : ISO Media file produced by Google Inc.
+  Stream #0:1[0x2](eng): Audio: aac (HE-AAC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 48 kb/s (default)
+    Metadata:
+      handler_name    : ISO Media file produced by Google Inc.
+Stream mapping:
+  Stream #0:0 -> #0:0 (h264 (native) -> wrapped_avframe (native))
+  Stream #0:1 -> #0:1 (aac (native) -> pcm_s16le (native))
+Press [q] to stop, [?] for help
+Output #0, null, to 'NUL':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf63.1.101
+  Stream #0:0(und): Video: wrapped_avframe, cuda(tv, bt709, progressive), 1280x720 [SAR 1:1 DAR 16:9], q=2-31, 200 kb/s, 50 fps, 50 tbn (default)
+    Metadata:
+      encoder         : Lavc63.1.101 wrapped_avframe
+      handler_name    : ISO Media file produced by Google Inc.
+  Stream #0:1(eng): Audio: pcm_s16le, 44100 Hz, stereo, s16, 1411 kb/s (default)
+    Metadata:
+      encoder         : Lavc63.1.101 pcm_s16le
+      handler_name    : ISO Media file produced by Google Inc.
+frame=  711 fps=0.0 q=-0.0 size=N/A time=00:00:14.34 bitrate=N/A speed=28.2x elapsed=0:00:00.5frame= 1636 fps=1585 q=-0.0 size=N/A time=00:00:32.87 bitrate=N/A speed=31.9x elapsed=0:00:01.frame= 2565 fps=1656 q=-0.0 size=N/A time=00:00:51.45 bitrate=N/A speed=33.2x elapsed=0:00:01.frame= 3463 fps=1681 q=-0.0 size=N/A time=00:01:09.42 bitrate=N/A speed=33.7x elapsed=0:00:02.frame= 4414 fps=1714 q=-0.0 size=N/A time=00:01:28.51 bitrate=N/A speed=34.4x elapsed=0:00:02.frame= 5345 fps=1729 q=-0.0 size=N/A time=00:01:46.99 bitrate=N/A speed=34.6x elapsed=0:00:03.frame= 6266 fps=1736 q=-0.0 size=N/A time=00:02:05.38 bitrate=N/Aspeed=34.7x elapsed=0:00:03.frame= 7174 fps=1740 q=-0.0 size=N/A time=00:02:23.54 bitrate=N/A speed=34.8x elapsed=0:00:04.frame= 8091 fps=1744 q=-0.0 size=N/A time=00:02:41.93 bitrate=N/A speed=34.9x elapsed=0:00:04.frame= 9043 fps=1754 q=-0.0 size=N/A time=00:03:01.02 bitrate=N/A speed=35.1x elapsed=0:00:05.frame= 9969 fps=1758 q=-0.0 size=N/A time=00:03:19.45 bitrate=N/A speed=35.2x elapsed=0:00:05.frame=10919 fps=1764 q=-0.0 size=N/A time=00:03:38.49 bitrate=N/A speed=35.3x elapsed=0:00:06.frame=11851 fps=1770 q=-0.0 size=N/A time=00:03:57.16 bitrate=N/A speed=35.4x elapsed=0:00:06.frame=12797 fps=1771 q=-0.0 size=N/A time=00:04:16.06 bitrate=N/A speed=35.4x elapsed=0:00:07.frame=13696 fps=1772 q=-0.0 size=N/A time=00:04:34.04 bitrate=N/A speed=35.5x elapsed=0:00:07.frame=14624 fps=1772 q=-0.0 size=N/A time=00:04:52.75 bitrate=N/A speed=35.5x elapsed=0:00:08.frame=15525 fps=1771 q=-0.0 size=N/A time=00:05:10.68 bitrate=N/A speed=35.4x elapsed=0:00:08.frame=16420fps=1770 q=-0.0 size=N/A time=00:05:28.56 bitrate=N/A speed=35.4x elapsed=0:00:09.frame=17350 fps=1772 q=-0.0 size=N/A time=00:05:47.13 bitrate=N/A speed=35.5x elapsed=0:00:09.frame=18274 fps=1773 q=-0.0 size=N/A time=00:06:05.62 bitrate=N/A speed=35.5x elapsed=0:00:10.frame=19194 fps=1772 q=-0.0 size=N/A time=00:06:23.96 bitrate=N/A speed=35.5x elframe=20110 fps=1772 q=-0.0 size=N/A time=00:06:42.30 bitrate=N/A speeframe=21011 fps=1772 q=-0.0 size=N/A time=00:07:00.37 bitrate=N/A speeframe=21937 fps=1773 q=-0.0 size=N/A time=00:07:18.90 bitrate=N/A speeframe=22872 fps=1775 q=-0.0 size=N/A time=00:07:37.52 bitrate=N/A speeframe=23787 fps=1775 q=-0.0 size=N/A time=00:07:55.82 bitrate=N/A spee[out#0/null @ 0000022cee6ef740] video:10083KiB audio:83896KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+frame=24352 fps=1773 q=-0.0 Lsize=N/A time=00:08:07.04 bitrate=N/A speed=35.5x elapsed=0:00:13.73    
+PS S:\Thotta_Nee_Keta\Projects\Frame-Generator> 
+
+
+PS C:\Windows\system32> nvidia-smi -l 1
+Mon Aug 17 20:14:34 2026
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.88                 KMD Version: 610.88        CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 4050 ...  WDDM  |   00000000:01:00.0 Off |                  N/A |
+| N/A   54C    P3             14W /   50W |     129MiB /   6141MiB |      4%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            8300      C   ...0.1-full_build\bin\ffmpeg.exe      N/A      |
++-----------------------------------------------------------------------------------------+
+Mon Aug 17 20:14:35 2026
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.88                 KMD Version: 610.88        CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 4050 ...  WDDM  |   00000000:01:00.0 Off |                  N/A |
+| N/A   55C    P3             14W /   50W |     129MiB /   6141MiB |      4%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            8300      C   ...0.1-full_build\bin\ffmpeg.exe      N/A      |
++-----------------------------------------------------------------------------------------+
+Mon Aug 17 20:14:36 2026
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.88                 KMD Version: 610.88        CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 4050 ...  WDDM  |   00000000:01:00.0 Off |                  N/A |
+| N/A   55C    P3             14W /   51W |     129MiB /   6141MiB |      4%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            8300      C   ...0.1-full_build\bin\ffmpeg.exe      N/A      |
++-----------------------------------------------------------------------------------------+
+Mon Aug 17 20:14:37 2026
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.88                 KMD Version: 610.88        CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 4050 ...  WDDM  |   00000000:01:00.0 Off |                  N/A |
+| N/A   56C    P3             14W /   52W |     129MiB /   6141MiB |      4%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            8300      C   ...0.1-full_build\bin\ffmpeg.exe      N/A      |
++-----------------------------------------------------------------------------------------+
+Mon Aug 17 20:14:38 2026
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.88                 KMD Version: 610.88        CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 4050 ...  WDDM  |   00000000:01:00.0 Off |                  N/A |
+| N/A   56C    P3             14W /   53W |     129MiB /   6141MiB |      4%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            8300      C   ...0.1-full_build\bin\ffmpeg.exe      N/A      |
++-----------------------------------------------------------------------------------------+
+Mon Aug 17 20:14:39 2026
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.88                 KMD Version: 610.88        CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 4050 ...  WDDM  |   00000000:01:00.0 Off |                  N/A |
+| N/A   56C    P3             14W /   52W |     129MiB /   6141MiB |      4%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            8300      C   ...0.1-full_build\bin\ffmpeg.exe      N/A      |
++-----------------------------------------------------------------------------------------+
+Mon Aug 17 20:14:40 2026
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.88                 KMD Version: 610.88        CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 4050 ...  WDDM  |   00000000:01:00.0 Off |                  N/A |
+| N/A   56C    P3             15W /   50W |     129MiB /   6141MiB |      4%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            8300      C   ...0.1-full_build\bin\ffmpeg.exe      N/A      |
++-----------------------------------------------------------------------------------------+
+Mon Aug 17 20:14:41 2026
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.88                 KMD Version: 610.88        CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 4050 ...  WDDM  |   00000000:01:00.0 Off |                  N/A |
+| N/A   57C    P3             14W /   50W |     129MiB /   6141MiB |      4%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            8300      C   ...0.1-full_build\bin\ffmpeg.exe      N/A      |
++-----------------------------------------------------------------------------------------+
+PS C:\Windows\system32>
