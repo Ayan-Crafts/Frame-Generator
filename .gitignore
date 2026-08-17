@@ -2,3 +2,4 @@ Datasets/
 *.mp4
 *.mp4.crdownload
 *.jpg
+.venv/

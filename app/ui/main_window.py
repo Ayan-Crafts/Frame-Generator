@@ -1,3 +1,4 @@
+from app.hardware.detector import HardwareDetector
 from PySide6.QtWidgets import (
     QMainWindow,
     QLabel,
@@ -18,7 +19,11 @@ class MainWindow(QMainWindow):
 
         self.input_directory = ""
         self.output_directory = ""
+        self.hardware = HardwareDetector().detect()
 
+        self.hardware_label = QLabel(
+        self.hardware_status()
+        )
         self.input_label = QLabel("Input: Not selected")
         self.output_label = QLabel("Output: Not selected")
 
@@ -38,7 +43,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(output_button)
 
         layout.addStretch()
+        layout.addWidget(self.hardware_label)
 
+        layout.addStretch()
+
+        layout.addWidget(start_button)
         layout.addWidget(start_button)
 
         container = QWidget()
@@ -69,3 +78,26 @@ class MainWindow(QMainWindow):
             self.output_label.setText(
                 f"Output: {directory}"
             )
+    def hardware_status(self):
+
+        if self.hardware is None:
+            return "Hardware: CPU"
+
+        if self.hardware.vendor == "NVIDIA":
+            memory = (
+                f"{self.hardware.memory_mb / 1024:.1f} GB"
+                if self.hardware.memory_mb
+                else "Unknown"
+            )
+
+        return (
+            f"Hardware: NVIDIA {self.hardware.name} | "
+            f"VRAM: {memory} | "
+            f"Driver: {self.hardware.driver} | "
+            f"Acceleration: {self.hardware.acceleration}"
+        )
+
+        return (
+            f"Hardware: AMD {self.hardware.name} | "
+            f"Acceleration: {self.hardware.acceleration}"
+        )
