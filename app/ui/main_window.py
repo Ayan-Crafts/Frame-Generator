@@ -1,6 +1,7 @@
 from pathlib import Path
 from PySide6.QtCore import QTimer
 from app.monitoring.system import SystemMonitor
+from app.jobs.job_manager import JobManager
 from PySide6.QtWidgets import (
     QMainWindow,
     QLabel,
@@ -27,6 +28,10 @@ class MainWindow(QMainWindow):
         self.monitor_timer.timeout.connect(
         self.update_system_stats
         )
+        self.worker = None
+        self.dataset_info = None
+        self.job_manager = JobManager()
+        self.job_id = None
         self.monitor_timer.start(1000)
         self.input_label = QLabel(
             "Input: Not selected"
@@ -150,55 +155,80 @@ class MainWindow(QMainWindow):
     def start_export(self):
 
         if not self.input_directory:
-
             self.dataset_label.setText(
                 "Please select an input directory."
             )
             return
+
         if not self.output_directory:
             self.dataset_label.setText(
                 "Please select an output directory."
             )
             return
-        if not self.dataset_info:
 
+        if not self.dataset_info:
             self.dataset_label.setText(
                 "Dataset has not been scanned."
             )
             return
-        if self.dataset_info.video_count == 0:
-            self.dataset_label.setText(
-                "No supported videos found."
-            )
-            return
+
         videos = self.dataset_info.videos
+
         output_directory = Path(
             self.output_directory
         )
+
+        # ------------------------------------------
+        # Create persistent job
+        # ------------------------------------------
+
+        job = self.job_manager.create_job(
+            self.input_directory,
+            self.output_directory,
+            videos,
+        )
+
+        self.job_id = job["job_id"]
+
+        # ------------------------------------------
+        # UI
+        # ------------------------------------------
+
         self.start_button.setEnabled(False)
         self.start_button.setText(
             "EXPORTING..."
         )
+
         self.dataset_label.setText(
-            f"Starting export of "
-            f"{len(videos)} videos..."
+            "Export starting..."
         )
+
+        # ------------------------------------------
+        # Worker
+        # ------------------------------------------
+
         self.worker = ExportWorker(
             videos,
             output_directory,
+            self.job_id,
         )
+
         self.worker.progress.connect(
             self.update_progress
         )
+
         self.worker.video_finished.connect(
             self.video_finished
         )
+
         self.worker.finished.connect(
             self.export_finished
         )
+
         self.worker.error.connect(
             self.export_error
         )
+
         self.worker.start()
     def update_progress(self, data):
 
