@@ -1,4 +1,5 @@
 from app.hardware.detector import HardwareDetector
+from app.processing.scanner import DatasetScanner
 from PySide6.QtWidgets import (
     QMainWindow,
     QLabel,
@@ -24,6 +25,11 @@ class MainWindow(QMainWindow):
         self.hardware_label = QLabel(
         self.hardware_status()
         )
+        self.dataset_info = None
+
+        self.dataset_label = QLabel(
+            "Dataset: Not scanned"
+            )
         self.input_label = QLabel("Input: Not selected")
         self.output_label = QLabel("Output: Not selected")
 
@@ -46,6 +52,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.hardware_label)
 
         layout.addStretch()
+        layout.addWidget(self.hardware_label)
+        layout.addWidget(self.dataset_label)
+
+        layout.addStretch()
+
+        layout.addWidget(start_button)
 
         layout.addWidget(start_button)
         layout.addWidget(start_button)
@@ -63,9 +75,22 @@ class MainWindow(QMainWindow):
 
         if directory:
             self.input_directory = directory
+
             self.input_label.setText(
                 f"Input: {directory}"
             )
+
+        scanner = DatasetScanner()
+
+        self.dataset_info = scanner.scan(
+            directory
+        )
+
+        self.dataset_label.setText(
+            f"Dataset: "
+            f"{self.dataset_info.video_count} videos | "
+            f"{self.dataset_info.total_gb:.2f} GB"
+        )
 
     def select_output(self):
         directory = QFileDialog.getExistingDirectory(
