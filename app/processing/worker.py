@@ -24,20 +24,29 @@ class ExportWorker(QThread):
         self._stop_requested = False
 
     def run(self):
+
         exporter = VideoExporter()
 
-        exporter.progress.connect(self.progress.emit)
-        exporter.error.connect(self.error.emit)
+        exporter.progress.connect(
+            self.progress.emit
+        )
+
+        exporter.error.connect(
+            self.error.emit
+        )
 
         for video in self.videos:
 
             if self._stop_requested:
-                break
+                return
 
-            exporter.export_video(
+            success = exporter.export_video(
                 video,
                 self.output_directory,
             )
+
+            if not success:
+                return
 
             self.video_finished.emit()
 
