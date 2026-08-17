@@ -11,6 +11,9 @@ class ExportWorker(QThread):
     progress = Signal(dict)
     video_finished = Signal()
     finished = Signal()
+    paused = Signal()
+    stopped = Signal()
+    cancelled = Signal()
     error = Signal(str)
 
     def __init__(
@@ -27,7 +30,40 @@ class ExportWorker(QThread):
 
         self.job_manager = JobManager()
 
-        self._stop_requested = False
+        self._control_requested = False
+        self._action = None
+
+    # ==================================================
+    # CONTROL
+    # ==================================================
+
+    def pause(self):
+
+        if not self.isRunning():
+            return
+
+        self._action = "pause"
+        self._control_requested = True
+
+    def stop_keep(self):
+
+        if not self.isRunning():
+            return
+
+        self._action = "stop_keep"
+        self._control_requested = True
+
+    def cancel_delete(self):
+
+        if not self.isRunning():
+            return
+
+        self._action = "cancel_delete"
+        self._control_requested = True
+
+    # ==================================================
+    # RUN
+    # ==================================================
 
     def run(self):
 
@@ -43,11 +79,12 @@ class ExportWorker(QThread):
 
         for video in self.videos:
 
-            if self._stop_requested:
-                self.job_manager.update_job(
-                    self.job_id,
-                    status="stopped",
-                )
+            # ------------------------------------------
+            # Check whether control was requested
+            # ------------------------------------------
+
+            if self._control_requested:
+                self._handle_control(video)
                 return
 
             # ------------------------------------------
@@ -64,12 +101,66 @@ class ExportWorker(QThread):
             # Export
             # ------------------------------------------
 
-            success = exporter.export_video(
+            result = exporter.export_video(
                 video,
                 self.output_directory,
+                should_stop=lambda:
+                    self._control_requested,
+                get_action=lambda:
+                    self._action,
             )
 
-            if not success:
+            # ------------------------------------------
+            # Pause
+            # ------------------------------------------
+
+            if result == "paused":
+
+                self.job_manager.update_job(
+                    self.job_id,
+                    status="paused",
+                    current_video=str(video),
+                )
+
+                self.paused.emit()
+
+                return
+
+            # ------------------------------------------
+            # Stop but preserve progress
+            # ------------------------------------------
+
+            if result == "stopped":
+
+                self.job_manager.update_job(
+                    self.job_id,
+                    status="stopped",
+                    current_video=str(video),
+                )
+
+                self.stopped.emit()
+
+                return
+
+            # ------------------------------------------
+            # Cancel and delete
+            # ------------------------------------------
+
+            if result == "cancelled":
+
+                self.job_manager.cancel_job(
+                    self.job_id
+                )
+
+                self.cancelled.emit()
+
+                return
+
+            # ------------------------------------------
+            # Export failed
+            # ------------------------------------------
+
+            if result is False:
 
                 self.job_manager.update_job(
                     self.job_id,
@@ -123,6 +214,48 @@ class ExportWorker(QThread):
 
         self.finished.emit()
 
-    def stop(self):
+    # ==================================================
+    # CONTROL HANDLER
+    # ==================================================
 
-        self._stop_requested = True
+    def _handle_control(
+        self,
+        video: Path,
+    ):
+
+        if self._action == "pause":
+
+            self.job_manager.update_job(
+                self.job_id,
+                status="paused",
+                current_video=str(video),
+            )
+
+            self.paused.emit()
+
+        elif self._action == "stop_keep":
+
+            self.job_manager.update_job(
+                self.job_id,
+                status="stopped",
+                current_video=str(video),
+            )
+
+            self.stopped.emit()
+
+        elif self._action == "cancel_delete":
+
+            self.job_manager.cancel_job(
+                self.job_id
+            )
+
+            self.cancelled.emit()
+
+    # ==================================================
+    # CLEAR CONTROL
+    # ==================================================
+
+    def clear_control(self):
+
+        self._control_requested = False
+        self._action = None

@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 from fractions import Fraction
 from pathlib import Path
@@ -21,7 +22,14 @@ class VideoExporter(QObject):
         self.resume_manager = ResumeManager()
         self.resource_manager = ResourceManager()
 
-    def get_video_info(self, video_path: Path):
+    # ==================================================
+    # VIDEO INFORMATION
+    # ==================================================
+
+    def get_video_info(
+        self,
+        video_path: Path,
+    ):
 
         command = [
             "ffprobe",
@@ -47,7 +55,10 @@ class VideoExporter(QObject):
             check=True,
         )
 
-        data = json.loads(result.stdout)
+        data = json.loads(
+            result.stdout
+        )
+
         stream = data["streams"][0]
 
         fps_text = (
@@ -55,16 +66,27 @@ class VideoExporter(QObject):
             or stream.get("r_frame_rate")
         )
 
-        fps = float(Fraction(fps_text))
+        fps = float(
+            Fraction(fps_text)
+        )
 
-        nb_frames = stream.get("nb_frames")
+        nb_frames = stream.get(
+            "nb_frames"
+        )
 
         if nb_frames:
-            total_frames = int(nb_frames)
+            total_frames = int(
+                nb_frames
+            )
+
         else:
             duration = float(
-                stream.get("duration", 0)
+                stream.get(
+                    "duration",
+                    0,
+                )
             )
+
             total_frames = round(
                 duration * fps
             )
@@ -74,10 +96,16 @@ class VideoExporter(QObject):
             "total_frames": total_frames,
         }
 
+    # ==================================================
+    # EXPORT VIDEO
+    # ==================================================
+
     def export_video(
         self,
         video_path: Path,
         output_root: Path,
+        should_stop=None,
+        get_action=None,
     ):
 
         try:
@@ -85,7 +113,8 @@ class VideoExporter(QObject):
             video_name = video_path.stem
 
             output_directory = (
-                output_root / video_name
+                output_root /
+                video_name
             )
 
             output_directory.mkdir(
@@ -102,12 +131,13 @@ class VideoExporter(QObject):
             )
 
             fps = video_info["fps"]
-            total_frames = video_info[
-                "total_frames"
-            ]
+
+            total_frames = (
+                video_info["total_frames"]
+            )
 
             # ------------------------------------------
-            # Existing frames
+            # Existing output / resume information
             # ------------------------------------------
 
             resume_info = (
@@ -115,6 +145,10 @@ class VideoExporter(QObject):
                     output_directory
                 )
             )
+
+            # ------------------------------------------
+            # Already completed
+            # ------------------------------------------
 
             if resume_info.completed:
 
@@ -125,6 +159,7 @@ class VideoExporter(QObject):
                     "speed": 0,
                     "time": "complete",
                     "status": "skipped",
+                    "total_frames": total_frames,
                 })
 
                 return True
@@ -138,7 +173,7 @@ class VideoExporter(QObject):
             )
 
             # ------------------------------------------
-            # Already complete
+            # Already has all frames
             # ------------------------------------------
 
             if existing_frames >= total_frames:
@@ -154,6 +189,7 @@ class VideoExporter(QObject):
                     "speed": 0,
                     "time": "complete",
                     "status": "completed",
+                    "total_frames": total_frames,
                 })
 
                 return True
@@ -164,28 +200,27 @@ class VideoExporter(QObject):
             )
 
             # ------------------------------------------
-            # Safe seek
+            # Resume position
             # ------------------------------------------
 
             target_time = (
-                (resume_frame - 1) / fps
+                (resume_frame - 1) /
+                fps
             )
 
-            # Seek backwards so FFmpeg lands on
-            # a safe keyframe before the target.
+            # Seek backwards to a safe keyframe.
             seek_time = max(
                 0.0,
                 target_time - 5.0,
             )
 
-            # Number of frames to discard after
-            # the seek point.
             discard_frames = round(
-                (target_time - seek_time) * fps
+                (target_time - seek_time) *
+                fps
             )
 
             # ------------------------------------------
-            # Resources
+            # Dynamic resource configuration
             # ------------------------------------------
 
             resource_profile = (
@@ -193,24 +228,16 @@ class VideoExporter(QObject):
                 .get_profile()
             )
 
-            threads = resource_profile[
-                "ffmpeg_threads"
-            ]
-
-            output_pattern = (
-                output_directory /
-                "%06d.jpg"
+            threads = (
+                resource_profile[
+                    "ffmpeg_threads"
+                ]
             )
 
-            # FFmpeg will decode from the safe seek
-            # point, discard exactly the frames before
-            # the requested source frame, then write
-            # only the remaining frames.
-            filter_expression = (
-                "hwdownload,"
-                "format=nv12,"
-                f"select='gte(n,{discard_frames})'"
-            )
+            # ------------------------------------------
+            # Notify UI
+            # ------------------------------------------
+
             self.progress.emit({
                 "video": video_path.name,
                 "frames": existing_frames,
@@ -218,9 +245,29 @@ class VideoExporter(QObject):
                 "speed": 0,
                 "time": "starting",
                 "status": "processing",
-                "resources": resource_profile,
+                "resume_frame": resume_frame,
                 "total_frames": total_frames,
+                "resources": resource_profile,
             })
+
+            # ------------------------------------------
+            # Output
+            # ------------------------------------------
+
+            output_pattern = (
+                output_directory /
+                "%06d.jpg"
+            )
+
+            # ------------------------------------------
+            # Hardware accelerated pipeline
+            # ------------------------------------------
+
+            filter_expression = (
+                "hwdownload,"
+                "format=nv12,"
+                f"select='gte(n,{discard_frames})'"
+            )
 
             command = [
 
@@ -269,6 +316,10 @@ class VideoExporter(QObject):
                 str(output_pattern),
             ]
 
+            # ------------------------------------------
+            # Start FFmpeg
+            # ------------------------------------------
+
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
@@ -279,13 +330,81 @@ class VideoExporter(QObject):
 
             progress_data = {}
 
+            # ------------------------------------------
+            # Monitor FFmpeg
+            # ------------------------------------------
+
             while True:
 
-                line = process.stdout.readline()
+                # --------------------------------------
+                # External control request
+                # --------------------------------------
+
+                if (
+                    should_stop
+                    and should_stop()
+                ):
+
+                    # Stop FFmpeg gracefully.
+                    process.terminate()
+
+                    try:
+
+                        process.wait(
+                            timeout=5
+                        )
+
+                    except subprocess.TimeoutExpired:
+
+                        process.kill()
+                        process.wait()
+
+                    action = (
+                        get_action()
+                        if get_action
+                        else "pause"
+                    )
+
+                    # ----------------------------------
+                    # Complete cancellation
+                    # ----------------------------------
+
+                    if action == "cancel_delete":
+
+                        shutil.rmtree(
+                            output_directory,
+                            ignore_errors=True,
+                        )
+
+                        return "cancelled"
+
+                    # ----------------------------------
+                    # Stop and preserve progress
+                    # ----------------------------------
+
+                    if action == "stop_keep":
+                        return "stopped"
+
+                    # ----------------------------------
+                    # Pause
+                    # ----------------------------------
+
+                    return "paused"
+
+                # --------------------------------------
+                # Read FFmpeg progress
+                # --------------------------------------
+
+                line = (
+                    process.stdout.readline()
+                )
 
                 if not line:
 
-                    if process.poll() is not None:
+                    if (
+                        process.poll()
+                        is not None
+                    ):
                         break
 
                     continue
@@ -309,9 +428,14 @@ class VideoExporter(QObject):
                         progress_data,
                         resume_frame,
                         total_frames,
+                        resource_profile,
                     )
 
                     progress_data = {}
+
+            # ------------------------------------------
+            # FFmpeg output/error
+            # ------------------------------------------
 
             stderr = process.stderr.read()
 
@@ -332,7 +456,7 @@ class VideoExporter(QObject):
                 return False
 
             # ------------------------------------------
-            # Final validation
+            # Validate output
             # ------------------------------------------
 
             final_info = (
@@ -344,6 +468,10 @@ class VideoExporter(QObject):
             final_frames = (
                 final_info.existing_frames
             )
+
+            # ------------------------------------------
+            # Strict completion validation
+            # ------------------------------------------
 
             if final_frames != total_frames:
 
@@ -361,7 +489,7 @@ class VideoExporter(QObject):
                 return False
 
             # ------------------------------------------
-            # Successful completion
+            # Mark complete
             # ------------------------------------------
 
             self.resume_manager.mark_complete(
@@ -375,6 +503,7 @@ class VideoExporter(QObject):
                 "speed": 0,
                 "time": "complete",
                 "status": "completed",
+                "total_frames": total_frames,
             })
 
             return True
@@ -387,12 +516,17 @@ class VideoExporter(QObject):
 
             return False
 
+    # ==================================================
+    # PROGRESS
+    # ==================================================
+
     def _emit_progress(
         self,
         video_path: Path,
         data: dict,
         resume_frame: int,
         total_frames: int,
+        resource_profile: dict,
     ):
 
         try:
@@ -417,9 +551,13 @@ class VideoExporter(QObject):
             )
 
             if speed_text.endswith("x"):
-                speed_text = speed_text[:-1]
+                speed_text = (
+                    speed_text[:-1]
+                )
 
-            speed = float(speed_text)
+            speed = float(
+                speed_text
+            )
 
             out_time = data.get(
                 "out_time",
@@ -435,10 +573,12 @@ class VideoExporter(QObject):
                 "resume_frame": resume_frame,
                 "total_frames": total_frames,
                 "status": "processing",
+                "resources": resource_profile,
             })
 
         except (
             ValueError,
             TypeError,
         ):
+
             pass
