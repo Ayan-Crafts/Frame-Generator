@@ -188,10 +188,14 @@ class VideoExporter(QObject):
             # Resources
             # ------------------------------------------
 
-            threads = (
+            resource_profile = (
                 self.resource_manager
-                .ffmpeg_threads()
+                .get_profile()
             )
+
+            threads = resource_profile[
+                "ffmpeg_threads"
+            ]
 
             output_pattern = (
                 output_directory /
@@ -207,6 +211,16 @@ class VideoExporter(QObject):
                 "format=nv12,"
                 f"select='gte(n,{discard_frames})'"
             )
+            self.progress.emit({
+                "video": video_path.name,
+                "frames": existing_frames,
+                "fps": 0,
+                "speed": 0,
+                "time": "starting",
+                "status": "processing",
+                "resources": resource_profile,
+                "total_frames": total_frames,
+            })
 
             command = [
 
