@@ -149,8 +149,8 @@ Before running the application, ensure your environment meets the following requ
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/Ayan-Crafts/Frame-Converter.git
-cd Frame-Converter
+git clone https://github.com/Ayan-Crafts/Frame-Generator.git
+cd Frame-Generator
 ```
 
 ### 2. Create and Activate a Virtual Environment
