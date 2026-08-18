@@ -1,12 +1,159 @@
-Datasets/
-*.mp4
-*.mp4.crdownload
-*.jpg
-.venv/
-.complete
+# ==============================================================================
+# Frame Generator - Git Ignore Configuration
+# ==============================================================================
 
-# Sensitive files that should never be committed to a public repository
+# ------------------------------------------------------------------------------
+# Large Media & Video Files (Exceeding GitHub 50MB/100MB Limits)
+# ------------------------------------------------------------------------------
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.m4v
+*.ts
+*.mts
+*.m2ts
+*.vob
+*.3gp
+*.mxf
+*.m2v
+*.f4v
+*.mpg
+*.mpeg
+
+# Partial & Incomplete Downloads
+*.crdownload
+*.part
+*.download
+
+# ------------------------------------------------------------------------------
+# Image Sequence & Frame Extractions
+# ------------------------------------------------------------------------------
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.bmp
+*.tiff
+*.tif
+*.raw
+*.heic
+
+# ------------------------------------------------------------------------------
+# Dataset & Frame Output Directories
+# ------------------------------------------------------------------------------
+Datasets/
+datasets/
+dataset/
+output/
+outputs/
+frames/
+extracted_frames/
+benchmark_frames/
+squash*/
+
+# ------------------------------------------------------------------------------
+# Bundled Binaries & Large Executables (> 100MB)
+# ------------------------------------------------------------------------------
+*.exe
+*.dll
+*.so
+*.dylib
+*.bin
+*.msi
+*.iso
+*.dmg
+*.pkg
+packaging/ffmpeg/
+packaging/**/*.exe
+packaging/**/*.dll
+
+# ------------------------------------------------------------------------------
+# Python & Bytecode Artifacts
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ------------------------------------------------------------------------------
+# Build & Distribution Artifacts (PyInstaller / CX_Freeze)
+# ------------------------------------------------------------------------------
+build/
+dist/
+*.manifest
+*.spec.bak
+
+# ------------------------------------------------------------------------------
+# Virtual Environments & Package Managers
+# ------------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.conda/
+
+# ------------------------------------------------------------------------------
+# Machine Learning Weights & Checkpoints (Heavy Assets)
+# ------------------------------------------------------------------------------
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.h5
+*.ckpt
+*.safetensors
+*.bin
+*.engine
+*.weights
+*.pb
+
+# ------------------------------------------------------------------------------
+# Compressed Archives
+# ------------------------------------------------------------------------------
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz
+
+# ------------------------------------------------------------------------------
+# Logs, Job State & Completion Markers
+# ------------------------------------------------------------------------------
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+.complete
+.frame-generator/
+*.coverage
+.coverage.*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+
+# ------------------------------------------------------------------------------
+# Security, Secrets & Credentials
+# ------------------------------------------------------------------------------
 .env
+.env.*
 *.pem
 *.key
 *.crt
@@ -15,6 +162,19 @@ Datasets/
 id_rsa
 id_dsa
 *.asc
-# OS generated files
+secrets.json
+
+# ------------------------------------------------------------------------------
+# Operating System & IDE Files
+# ------------------------------------------------------------------------------
 .DS_Store
-Thumbs.db
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+packaging/ffmpeg/ffmpeg.exe
+packaging/ffmpeg/ffprobe.exe

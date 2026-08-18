@@ -1,7 +1,7 @@
 import os
 import shutil
 import subprocess
-
+from app.utils.ffmpeg import get_ffmpeg_path
 import psutil
 
 
@@ -76,7 +76,7 @@ class ResourceManager:
 
             result = subprocess.run(
                 [
-                    "ffmpeg",
+                    get_ffmpeg_path(),
                     "-hide_banner",
                     "-encoders",
                 ],

@@ -8,6 +8,10 @@ from PySide6.QtCore import QObject, Signal
 
 from app.processing.resume import ResumeManager
 from app.processing.resource_manager import ResourceManager
+from app.utils.ffmpeg import (
+    get_ffmpeg_path,
+    get_ffprobe_path,
+)
 
 
 class VideoExporter(QObject):
@@ -32,7 +36,7 @@ class VideoExporter(QObject):
     ):
 
         command = [
-            "ffprobe",
+            get_ffprobe_path(),
             "-v",
             "error",
             "-select_streams",
@@ -271,7 +275,7 @@ class VideoExporter(QObject):
 
             command = [
 
-                "ffmpeg",
+                get_ffmpeg_path(),
 
                 "-hide_banner",
 
