@@ -6,6 +6,7 @@ import psutil
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QTabWidget,
     QMainWindow,
     QLabel,
     QPushButton,
@@ -24,6 +25,8 @@ from app.hardware.detector import HardwareDetector
 from app.processing.scanner import DatasetScanner
 from app.processing.worker import ExportWorker
 from app.jobs.job_manager import JobManager
+
+from app.ui.annotation_tab import AnnotationTab
 
 
 class StatCard(QFrame):
@@ -746,8 +749,24 @@ class MainWindow(QMainWindow):
             controls
         )
 
+        self.tabs = QTabWidget()
+
+        self.tabs.addTab(
+            central,
+            "VIDEO → FRAMES"
+        )
+
+        self.annotation_tab = AnnotationTab(
+            self
+        )
+
+        self.tabs.addTab(
+            self.annotation_tab,
+            "ANNOTATION"
+        )
+
         self.setCentralWidget(
-            central
+            self.tabs
         )
 
         # ==================================================
