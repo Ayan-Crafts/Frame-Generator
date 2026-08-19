@@ -145,32 +145,40 @@ Before running the application, ensure your environment meets the following requ
 
 ---
 
-## 🚀 Installation
+## 🚀 Installation & Quick Start
 
-### 1. Clone the Repository
+### Option A: Run Pre-Built Executable Directly
+If you cloned the repository with the pre-built distribution:
+```powershell
+.\dist\FrameGenerator\FrameGenerator.exe
+```
+
+---
+
+### Option B: Run from Source
+
+#### 1. Clone the Repository
 ```bash
 git clone https://github.com/Ayan-Crafts/Frame-Converter.git
 cd Frame-Converter
 ```
 
-### 2. Create and Activate a Virtual Environment
+#### 2. Create and Activate a Virtual Environment
 ```bash
 # Using PowerShell on Windows
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
-### 3. Install Python Dependencies
+#### 3. Install Python Dependencies
 ```bash
 pip install PySide6 psutil
 ```
 
-### 4. Verify FFmpeg Hardware Acceleration
-Run the following command in your terminal to verify that CUDA acceleration is recognized by your local FFmpeg installation:
+#### 4. Launch Application from Source
 ```bash
-ffmpeg -hide_banner -hwaccels
+python app/main.py
 ```
-*Expected output should list `cuda`, `dxva2`, `d3d11va`, `vulkan`, `opencl`.*
 
 ---
 
