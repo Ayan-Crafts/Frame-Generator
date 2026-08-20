@@ -163,6 +163,8 @@ id_rsa
 id_dsa
 *.asc
 secrets.json
+*.csv
+*.json
 
 # ------------------------------------------------------------------------------
 # Operating System & IDE Files
