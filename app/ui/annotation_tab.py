@@ -2,7 +2,7 @@ from pathlib import Path
 import csv
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QPixmap, QPainter, QPen, QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QWidget,
@@ -51,6 +51,7 @@ STATUS_ACCEPTED = "ACCEPTED"
 STATUS_REVIEW = "LOW_CONFIDENCE"
 STATUS_OCCLUDED = "FULLY_OCCLUDED"
 STATUS_OOB = "OUT_OF_BOUNDS"
+STATUS_SEVERE_BLUR = "SEVERE_MOTION_BLUR"
 
 
 class AnnotationImage(QWidget):
@@ -61,8 +62,8 @@ class AnnotationImage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFocusPolicy(Qt.StrongFocus)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setMinimumSize(520, 360)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.setMinimumSize(0, 220)
         self.setStyleSheet(
             """
             QWidget {
@@ -92,7 +93,23 @@ class AnnotationImage(QWidget):
         self.ball_y = ball_y
         self.visibility = visibility
         self.box = box
+        self.updateGeometry()
         self.update()
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        if self.original_pixmap is not None and not self.original_pixmap.isNull() and self.original_pixmap.width() > 0:
+            ratio = self.original_pixmap.height() / self.original_pixmap.width()
+            return max(220, int(width * ratio) + 2)
+        return 360
+
+    def sizeHint(self):
+        if self.original_pixmap is not None and not self.original_pixmap.isNull():
+            w = max(640, self.original_pixmap.width())
+            return QSize(w, self.heightForWidth(w))
+        return QSize(960, 540)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -139,114 +156,103 @@ class AnnotationImage(QWidget):
 
         painter.end()
 
+    def mousePressEvent(self, event):
+        """Convert a click on the displayed image back to original frame coordinates."""
+        if event.button() != Qt.LeftButton:
+            super().mousePressEvent(event)
+            return
+
+        if self.original_pixmap is None or self.original_pixmap.isNull():
+            return
+
+        # Ignore clicks outside the actual displayed image.
+        px = event.position().x()
+        py = event.position().y()
+        if (px < self.image_x or py < self.image_y or
+                px >= self.image_x + self.image_width or
+                py >= self.image_y + self.image_height):
+            return
+
+        if self.image_width <= 0 or self.image_height <= 0:
+            return
+
+        # Map displayed coordinates to original image coordinates.
+        x = int(round((px - self.image_x) * self.original_pixmap.width() / self.image_width))
+        y = int(round((py - self.image_y) * self.original_pixmap.height() / self.image_height))
+
+        x = max(0, min(self.original_pixmap.width() - 1, x))
+        y = max(0, min(self.original_pixmap.height() - 1, y))
+
+        self.ball_x = x
+        self.ball_y = y
+        self.visibility = 1
+        self.update()
+        self.ball_clicked.emit(x, y)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.update()
 
-    def mousePressEvent(self, event):
-        if self.original_pixmap is None or event.button() != Qt.LeftButton:
-            return super().mousePressEvent(event)
-
-        px = event.position().x()
-        py = event.position().y()
-
-        if not (
-            self.image_x <= px < self.image_x + self.image_width
-            and self.image_y <= py < self.image_y + self.image_height
-        ):
-            return
-
-        scale_x = self.original_pixmap.width() / self.image_width
-        scale_y = self.original_pixmap.height() / self.image_height
-        x = int((px - self.image_x) * scale_x)
-        y = int((py - self.image_y) * scale_y)
-        x = max(0, min(self.original_pixmap.width() - 1, x))
-        y = max(0, min(self.original_pixmap.height() - 1, y))
-        self.ball_clicked.emit(x, y)
-        self.setFocus()
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Left:
-            self.jump_frames(-10 if event.modifiers() & Qt.ShiftModifier else -1)
-            event.accept()
-            return
-        if event.key() == Qt.Key_Right:
-            self.jump_frames(10 if event.modifiers() & Qt.ShiftModifier else 1)
-            event.accept()
-            return
-        if event.key() == Qt.Key_Space and self.play_button is not None:
-            self.play_button.setChecked(not self.play_button.isChecked())
-            event.accept()
-            return
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and self.save_next_button is not None and self.save_next_button.isEnabled():
-            self.save_and_next()
-            event.accept()
-            return
-        super().keyPressEvent(event)
-
 
 class MetricCard(QFrame):
-    def __init__(self, title, value="--", subtitle="", parent=None):
+    """Compact statistics card used by the Statistics tab."""
+
+    def __init__(self, title, value="0", parent=None):
         super().__init__(parent)
-        self.setObjectName("metricCard")
+        self.setObjectName("MetricCard")
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setMinimumHeight(82)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(2)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(3)
 
-        title_label = QLabel(title)
-        title_label.setObjectName("metricTitle")
-        self.value_label = QLabel(value)
-        self.value_label.setObjectName("metricValue")
-        subtitle_label = QLabel(subtitle)
-        subtitle_label.setObjectName("metricSubtitle")
+        self.title_label = QLabel(str(title))
+        self.title_label.setStyleSheet(
+            "color: #94a3b8; font-size: 12px; font-weight: 600;"
+        )
+        self.value_label = QLabel(str(value))
+        self.value_label.setStyleSheet(
+            "color: #f8fafc; font-size: 24px; font-weight: 700;"
+        )
+        self.value_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-        layout.addWidget(title_label)
+        layout.addWidget(self.title_label)
         layout.addWidget(self.value_label)
-        layout.addWidget(subtitle_label)
+
+        self.setStyleSheet(
+            """
+            QFrame#MetricCard {
+                background: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 10px;
+            }
+            """
+        )
 
     def set_value(self, value):
         self.value_label.setText(str(value))
 
 
 class AnnotationTab(QWidget):
-    """TrackNet annotation workstation.
-
-    CSV core fields are always:
-    frame,x,y,visibility
-
-    Additional audit fields:
-    x1,y1,x2,y2,source,confidence,status
-    """
+    """Complete TrackNet annotation workspace."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.frame_directory = None
         self.frames = []
-        self.current_index = 0
         self.annotations = {}
+        self.current_index = 0
         self.csv_path = None
-        self.autosave_enabled = False
-        # For VISIBLE / PARTIAL, the user can select the state first and then
-        # click the estimated ball center. OCCLUDED / OUT_OF_BOUNDS do not
-        # require a point.
+
         self.pending_visibility_mode = None
+        self.autosave_enabled = False
+        self._play_timer = None
+        self._updating_slider = False
+        self._loading_directory = False
 
         self.build_ui()
-
-    # ------------------------------------------------------------------
-    # UI
-    # ------------------------------------------------------------------
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if hasattr(self, "image_viewer"):
-            if self.width() < 1180:
-                self.image_viewer.setMinimumSize(420, 300)
-            elif self.width() < 1500:
-                self.image_viewer.setMinimumSize(520, 340)
-            else:
-                self.image_viewer.setMinimumSize(620, 420)
 
     def build_ui(self):
         self.setStyleSheet(
@@ -449,19 +455,35 @@ class AnnotationTab(QWidget):
     # ------------------------------------------------------------------
 
     def build_annotating_page(self):
-        """Image-first annotation workspace.
+        """Scrollable, image-first annotation workspace.
 
-        The frame canvas is a completely separate widget from the navigation
-        controls. Nothing is allowed to sit on top of the image, so every
-        pixel of the frame remains clickable.
+        The complete source frame is always rendered with KeepAspectRatio.
+        All controls live below the image, never over it. The page itself is
+        vertically scrollable so the full image can be shown at a useful size
+        even when the display is not tall enough for the image plus controls.
         """
-        layout = QVBoxLayout(self.annotating_page)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(6)
+        outer = QVBoxLayout(self.annotating_page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        # Compact status strip.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea { background: #0f172a; border: none; }")
+        outer.addWidget(scroll)
+        self.annotation_scroll = scroll
+
+        content = QWidget()
+        content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(8, 8, 8, 12)
+        layout.setSpacing(7)
+        scroll.setWidget(content)
+
+        # Compact top status.
         progress_row = QHBoxLayout()
-        progress_row.setSpacing(12)
         self.annotation_progress_label = QLabel(
             "FRAME -- / --   •   ANNOTATED 0   •   REMAINING 0"
         )
@@ -469,61 +491,39 @@ class AnnotationTab(QWidget):
         progress_row.addWidget(self.annotation_progress_label, 1)
         self.annotation_percent_label = QLabel("0.0%")
         self.annotation_percent_label.setStyleSheet(
-            "font-size: 11pt; font-weight: 800; color: #f8fafc;"
+            "font-size: 10pt; font-weight: 800; color: #f8fafc;"
         )
         progress_row.addWidget(self.annotation_percent_label)
         layout.addLayout(progress_row)
 
-        self.annotation_progress_bar = QProgressBar()
-        self.annotation_progress_bar.setRange(0, 100)
-        self.annotation_progress_bar.setValue(0)
-        self.annotation_progress_bar.setTextVisible(False)
-        self.annotation_progress_bar.setMaximumHeight(6)
-        layout.addWidget(self.annotation_progress_bar)
-
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.setChildrenCollapsible(False)
-        splitter.setHandleWidth(5)
-
-        # --------------------------------------------------------------
-        # LEFT: image canvas, then controls BELOW the image.
-        # --------------------------------------------------------------
-        left_panel = QFrame()
-        left_panel.setObjectName("panel")
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(6, 6, 6, 6)
-        left_layout.setSpacing(6)
-
+        # FULL IMAGE AREA. Its height follows the source image aspect ratio.
         image_frame = QFrame()
         image_frame.setObjectName("imageFrame")
+        image_frame.setStyleSheet(
+            "QFrame#imageFrame { background: #020617; border: 1px solid #334155; border-radius: 8px; }"
+        )
         image_layout = QVBoxLayout(image_frame)
         image_layout.setContentsMargins(0, 0, 0, 0)
         image_layout.setSpacing(0)
 
         self.image_viewer = AnnotationImage()
         self.image_viewer.ball_clicked.connect(self.ball_clicked)
-        image_layout.addWidget(self.image_viewer, 1)
-        left_layout.addWidget(image_frame, 1)
+        self.image_viewer.setMinimumWidth(640)
+        image_layout.addWidget(self.image_viewer)
+        layout.addWidget(image_frame, 0)
 
-        # Everything below this point is outside the image canvas.
-        control_bar = QFrame()
-        control_bar.setObjectName("annotationControlBar")
-        control_layout = QVBoxLayout(control_bar)
-        control_layout.setContentsMargins(6, 6, 6, 6)
-        control_layout.setSpacing(5)
-
+        # Frame identity/navigation is BELOW the complete image.
         nav_info = QHBoxLayout()
-        nav_info.setSpacing(6)
         self.frame_file_label = QLabel("FILE: --")
         self.frame_file_label.setObjectName("frameFileLabel")
-        self.frame_file_label.setMinimumHeight(30)
+        self.frame_file_label.setMinimumHeight(32)
         nav_info.addWidget(self.frame_file_label, 1)
         self.frame_counter_label = QLabel("FRAME: -- / --")
         self.frame_counter_label.setObjectName("statusNeutral")
         self.frame_counter_label.setAlignment(Qt.AlignCenter)
-        self.frame_counter_label.setMinimumHeight(30)
+        self.frame_counter_label.setMinimumHeight(32)
         nav_info.addWidget(self.frame_counter_label)
-        control_layout.addLayout(nav_info)
+        layout.addLayout(nav_info)
 
         fast_nav = QHBoxLayout()
         fast_nav.setSpacing(5)
@@ -547,108 +547,88 @@ class AnnotationTab(QWidget):
         for widget in (self.jump_back_button, self.prev_fast_button, self.frame_number_input,
                        self.next_fast_button, self.jump_forward_button, self.play_button):
             fast_nav.addWidget(widget)
-        control_layout.addLayout(fast_nav)
+        layout.addLayout(fast_nav)
 
         self.frame_slider = QSlider(Qt.Horizontal)
         self.frame_slider.setMinimum(0)
         self.frame_slider.setMaximum(0)
         self.frame_slider.valueChanged.connect(self.slider_frame_changed)
-        control_layout.addWidget(self.frame_slider)
+        layout.addWidget(self.frame_slider)
 
         self.navigation_hint = QLabel(
-            "Click the ball in the image • ←/→: frame • Shift+←/→: ±10 • Space: play"
+            "Click the ball • ←/→ frame • Shift+←/→ ±10 • Space play"
         )
         self.navigation_hint.setObjectName("statusNeutral")
         self.navigation_hint.setAlignment(Qt.AlignCenter)
-        self.navigation_hint.setMaximumHeight(24)
-        control_layout.addWidget(self.navigation_hint)
+        layout.addWidget(self.navigation_hint)
 
-        left_layout.addWidget(control_bar, 0)
-
-        # --------------------------------------------------------------
-        # RIGHT: compact current-frame metrics.
-        # --------------------------------------------------------------
-        right_panel = QFrame()
-        right_panel.setObjectName("panel")
-        right_panel.setMinimumWidth(280)
-        right_panel.setMaximumWidth(400)
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(12, 10, 12, 10)
-        right_layout.setSpacing(5)
-
-        heading = QLabel("CURRENT FRAME")
-        heading.setObjectName("sectionTitle")
-        right_layout.addWidget(heading)
-
+        # Compact current-frame metrics. These are BELOW the image, not beside it.
+        metrics_panel = QFrame()
+        metrics_panel.setObjectName("panel")
+        metrics_layout = QGridLayout(metrics_panel)
+        metrics_layout.setContentsMargins(8, 6, 8, 6)
+        metrics_layout.setHorizontalSpacing(14)
+        metrics_layout.setVerticalSpacing(4)
         self.metric_labels = {}
         metric_names = [
             "Frame", "File", "X", "Y", "Visibility", "Visibility Flag",
             "Source", "Confidence", "Status", "Bounding Box", "Image Size",
         ]
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(5)
-        grid.setColumnStretch(1, 1)
-        for row, name in enumerate(metric_names):
+        for i, name in enumerate(metric_names):
+            row = i // 4
+            col = (i % 4) * 2
             n = QLabel(name)
             n.setObjectName("metricName")
             v = QLabel("--")
             v.setObjectName("metricData")
             v.setWordWrap(True)
             self.metric_labels[name] = v
-            grid.addWidget(n, row, 0)
-            grid.addWidget(v, row, 1)
-        right_layout.addLayout(grid)
+            metrics_layout.addWidget(n, row, col)
+            metrics_layout.addWidget(v, row, col + 1)
+        layout.addWidget(metrics_panel)
 
         self.current_status = QLabel("NOT ANNOTATED — CHOOSE A STATE OR CLICK THE BALL")
         self.current_status.setObjectName("statusNeutral")
         self.current_status.setAlignment(Qt.AlignCenter)
         self.current_status.setWordWrap(True)
-        right_layout.addWidget(self.current_status)
-        right_layout.addStretch(1)
+        layout.addWidget(self.current_status)
 
-        splitter.addWidget(left_panel)
-        splitter.addWidget(right_panel)
-        splitter.setStretchFactor(0, 5)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([1300, 320])
-        layout.addWidget(splitter, 1)
-
-        # --------------------------------------------------------------
-        # Annotation state controls — BELOW the image/workspace.
-        # --------------------------------------------------------------
+        # Annotation state controls BELOW everything above.
         visibility_group = QGroupBox("ANNOTATION STATE")
-        visibility_layout = QHBoxLayout(visibility_group)
+        visibility_layout = QGridLayout(visibility_group)
         visibility_layout.setContentsMargins(6, 6, 6, 6)
-        visibility_layout.setSpacing(5)
+        visibility_layout.setSpacing(6)
 
         self.visible_button = QPushButton("● VISIBLE")
         self.visible_button.setToolTip("Select VISIBLE, then click the ball center in the image.")
         self.visible_button.clicked.connect(self.mark_visible)
-
         self.partial_button = QPushButton("◐ PARTIALLY OCCLUDED")
         self.partial_button.setToolTip("Select PARTIAL, then click the estimated ball center.")
         self.partial_button.clicked.connect(self.mark_partial)
-
         self.occluded_button = QPushButton("✕ FULLY OCCLUDED")
         self.occluded_button.setToolTip("No click required. Saves x=0, y=0, visibility=0.")
         self.occluded_button.clicked.connect(self.mark_occluded)
-
         self.oob_button = QPushButton("↗ OUT OF BOUNDS")
         self.oob_button.setToolTip("No click required. Saves x=0, y=0, visibility=0.")
         self.oob_button.clicked.connect(self.mark_oob)
-
+        self.blur_button = QPushButton("≈ SEVERE MOTION BLUR")
+        self.blur_button.setToolTip(
+            "No click required when the ball is visible but motion blur makes its center impossible to localize. "
+            "This is stored as x=0, y=0, visibility=0 for TrackNet-safe labeling, with status SEVERE_MOTION_BLUR for later review."
+        )
+        self.blur_button.clicked.connect(self.mark_severe_motion_blur)
         self.clear_mark_button = QPushButton("CLEAR MARK")
-        self.clear_mark_button.setToolTip("Remove the current frame annotation.")
         self.clear_mark_button.clicked.connect(self.clear_current_annotation)
 
-        for button in (self.visible_button, self.partial_button, self.occluded_button,
-                       self.oob_button, self.clear_mark_button):
-            visibility_layout.addWidget(button)
-        layout.addWidget(visibility_group, 0)
+        buttons = [
+            self.visible_button, self.partial_button, self.occluded_button,
+            self.oob_button, self.blur_button, self.clear_mark_button,
+        ]
+        for i, button in enumerate(buttons):
+            visibility_layout.addWidget(button, i // 3, i % 3)
+        layout.addWidget(visibility_group)
 
         bottom = QHBoxLayout()
-        bottom.setSpacing(6)
         self.autosave_check = QCheckBox("AUTO-SAVE")
         self.autosave_check.setToolTip("Immediately write annotations to the CSV.")
         self.autosave_check.toggled.connect(self.set_autosave)
@@ -658,20 +638,17 @@ class AnnotationTab(QWidget):
         bottom.addWidget(self.save_hint, 1)
         self.previous_button = QPushButton("◀ PREVIOUS")
         self.previous_button.clicked.connect(self.previous_frame)
-        bottom.addWidget(self.previous_button)
         self.save_button = QPushButton("SAVE")
         self.save_button.clicked.connect(self.save_current)
-        bottom.addWidget(self.save_button)
         self.save_next_button = QPushButton("SAVE & NEXT ▶")
         self.save_next_button.setObjectName("primary")
         self.save_next_button.clicked.connect(self.save_and_next)
-        bottom.addWidget(self.save_next_button)
         self.next_button = QPushButton("NEXT ▶")
         self.next_button.clicked.connect(self.next_frame)
-        bottom.addWidget(self.next_button)
+        for widget in (self.previous_button, self.save_button, self.save_next_button, self.next_button):
+            bottom.addWidget(widget)
         layout.addLayout(bottom)
 
-        # Allow the viewer to receive keyboard navigation immediately.
         self.image_viewer.jump_frames = self.jump_frames
         self.image_viewer.play_button = self.play_button
         self.image_viewer.save_next_button = self.save_next_button
@@ -749,7 +726,7 @@ class AnnotationTab(QWidget):
             "Total Frames", "Annotated", "Remaining", "Progress",
             "Auto Annotated", "Manual Annotated",
             "Visible", "Partially Occluded", "Fully Occluded", "Out of Bounds",
-            "High Confidence", "Low Confidence",
+            "Severe Motion Blur", "High Confidence", "Low Confidence",
         ]
 
         self.stat_detail_labels = {}
@@ -985,7 +962,8 @@ class AnnotationTab(QWidget):
                 f"ANNOTATED {counts['annotated']:,}   •   REMAINING {counts['remaining']:,}"
             )
             self.annotation_percent_label.setText(f"{counts['progress']:.1f}%")
-            self.annotation_progress_bar.setValue(int(counts['progress']))
+            if hasattr(self, "annotation_progress_bar"):
+                self.annotation_progress_bar.setValue(int(counts['progress']))
         self.metric_labels["Image Size"].setText(
             f"{pixmap.width()} × {pixmap.height()}"
         )
@@ -1017,7 +995,7 @@ class AnnotationTab(QWidget):
                 f"{annotation['source']}  •  "
                 f"{annotation['status']}"
             )
-            if annotation.get("status") == "PARTIALLY_OCCLUDED":
+            if annotation.get("status") in {"PARTIALLY_OCCLUDED", STATUS_SEVERE_BLUR}:
                 self.current_status.setObjectName("statusWarn")
             else:
                 self.current_status.setObjectName(
@@ -1163,6 +1141,33 @@ class AnnotationTab(QWidget):
             "source": "MANUAL",
             "confidence": 1.0,
             "status": STATUS_OOB,
+        }
+        self.update_all()
+        self._autosave_if_enabled()
+
+    def mark_severe_motion_blur(self):
+        """Mark a visible-but-unlocalizable ball caused by severe motion blur.
+
+        TrackNet requires a usable point when visibility=1. When a human can
+        see the ball but cannot reliably determine its center because the ball
+        is stretched into blur and blends with court/text markings, we keep a
+        dedicated status and use x=0, y=0, visibility=0 as a safe temporary
+        TrackNet label. The status preserves the reason so these frames can be
+        reviewed/corrected later.
+        """
+        if not self.frames:
+            return
+        frame = self.frames[self.current_index]
+        self.pending_visibility_mode = None
+        self.annotations[frame.name] = {
+            "frame": frame.name,
+            "x": 0,
+            "y": 0,
+            "visibility": 0,
+            "x1": 0, "y1": 0, "x2": 0, "y2": 0,
+            "source": "MANUAL",
+            "confidence": 1.0,
+            "status": STATUS_SEVERE_BLUR,
         }
         self.update_all()
         self._autosave_if_enabled()
@@ -1377,7 +1382,7 @@ class AnnotationTab(QWidget):
             return False
         if annotation.get("visibility") == 1:
             return annotation.get("x") is not None and annotation.get("y") is not None
-        return annotation.get("status") in {STATUS_OCCLUDED, STATUS_OOB}
+        return annotation.get("status") in {STATUS_OCCLUDED, STATUS_OOB, STATUS_SEVERE_BLUR}
 
     def save_current(self):
         if not self._current_annotation_ready():
@@ -1385,7 +1390,7 @@ class AnnotationTab(QWidget):
                 self,
                 "Annotation Required",
                 "For a visible/partially occluded ball, click the ball center first.\n\n"
-                "If the ball cannot be located, choose FULLY OCCLUDED or OUT OF BOUNDS.",
+                "If the ball cannot be localized, choose FULLY OCCLUDED, OUT OF BOUNDS, or SEVERE MOTION BLUR.",
             )
             return
         self.save_annotations()
@@ -1399,7 +1404,7 @@ class AnnotationTab(QWidget):
                 self,
                 "Annotation Required",
                 "Mark the current frame first.\n\n"
-                "Click the ball for VISIBLE/PARTIAL, or choose FULLY OCCLUDED / OUT OF BOUNDS.",
+                "Click the ball for VISIBLE/PARTIAL, or choose FULLY OCCLUDED / OUT OF BOUNDS / SEVERE MOTION BLUR.",
             )
             return
 
@@ -1437,6 +1442,8 @@ class AnnotationTab(QWidget):
             return "FULLY OCCLUDED"
         if status == STATUS_OOB:
             return "OUT OF BOUNDS"
+        if status == STATUS_SEVERE_BLUR:
+            return "SEVERE MOTION BLUR"
         if value == 1:
             return "VISIBLE"
         return "NOT VISIBLE"
@@ -1452,6 +1459,7 @@ class AnnotationTab(QWidget):
         partial = sum(v.get("visibility") == 1 and v.get("status") == "PARTIALLY_OCCLUDED" for v in values)
         occluded = sum(v.get("status") == STATUS_OCCLUDED for v in values)
         oob = sum(v.get("status") == STATUS_OOB for v in values)
+        severe_blur = sum(v.get("status") == STATUS_SEVERE_BLUR for v in values)
         high = sum(v.get("confidence", 0) >= self.confidence_spin.value() for v in values)
         low = sum(v.get("status") == STATUS_REVIEW for v in values)
 
@@ -1466,6 +1474,7 @@ class AnnotationTab(QWidget):
             "partial": partial,
             "occluded": occluded,
             "oob": oob,
+            "severe_blur": severe_blur,
             "high": high,
             "low": low,
         }
@@ -1483,9 +1492,8 @@ class AnnotationTab(QWidget):
             self.annotation_percent_label.setText(
                 f"{c['progress']:.1f}%"
             )
-            self.annotation_progress_bar.setValue(
-                int(c['progress'])
-            )
+            if hasattr(self, "annotation_progress_bar"):
+                self.annotation_progress_bar.setValue(int(c['progress']))
 
         mapping = {
             "Total Frames": c["total"],
@@ -1498,6 +1506,7 @@ class AnnotationTab(QWidget):
             "Partially Occluded": c["partial"],
             "Fully Occluded": c["occluded"],
             "Out of Bounds": c["oob"],
+            "Severe Motion Blur": c["severe_blur"],
             "High Confidence": c["high"],
             "Low Confidence": c["low"],
         }
@@ -1652,6 +1661,7 @@ class AnnotationTab(QWidget):
         self.partial_button.setEnabled(enabled)
         self.occluded_button.setEnabled(enabled)
         self.oob_button.setEnabled(enabled)
+        self.blur_button.setEnabled(enabled)
 
         if self.frames:
             self.update_navigation_state()
@@ -1665,7 +1675,8 @@ class AnnotationTab(QWidget):
                     "FRAME 0 / 0   •   ANNOTATED 0   •   REMAINING 0"
                 )
                 self.annotation_percent_label.setText("0.0%")
-                self.annotation_progress_bar.setValue(0)
+                if hasattr(self, "annotation_progress_bar"):
+                    self.annotation_progress_bar.setValue(0)
 
     # ------------------------------------------------------------------
     # External API for future SAM worker
