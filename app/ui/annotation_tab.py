@@ -613,8 +613,8 @@ class AnnotationTab(QWidget):
         self.oob_button.clicked.connect(self.mark_oob)
         self.blur_button = QPushButton("≈ SEVERE MOTION BLUR")
         self.blur_button.setToolTip(
-            "No click required when the ball is visible but motion blur makes its center impossible to localize. "
-            "This is stored as x=0, y=0, visibility=0 for TrackNet-safe labeling, with status SEVERE_MOTION_BLUR for later review."
+            "Select this when the ball is visible but severely stretched by motion blur. "
+            "You MUST click the estimated ball center; this is saved as visibility=1 with status SEVERE_MOTION_BLUR."
         )
         self.blur_button.clicked.connect(self.mark_severe_motion_blur)
         self.clear_mark_button = QPushButton("CLEAR MARK")
@@ -1043,6 +1043,8 @@ class AnnotationTab(QWidget):
 
         if mode == "PARTIAL":
             status = "PARTIALLY_OCCLUDED"
+        elif mode == "SEVERE_BLUR":
+            status = STATUS_SEVERE_BLUR
         else:
             status = STATUS_ACCEPTED
 
@@ -1146,31 +1148,34 @@ class AnnotationTab(QWidget):
         self._autosave_if_enabled()
 
     def mark_severe_motion_blur(self):
-        """Mark a visible-but-unlocalizable ball caused by severe motion blur.
+        """Select severe motion blur, then allow the user to click the ball.
 
-        TrackNet requires a usable point when visibility=1. When a human can
-        see the ball but cannot reliably determine its center because the ball
-        is stretched into blur and blends with court/text markings, we keep a
-        dedicated status and use x=0, y=0, visibility=0 as a safe temporary
-        TrackNet label. The status preserves the reason so these frames can be
-        reviewed/corrected later.
+        Severe motion blur is still a *visible* ball state. The user can see
+        the ball, but its appearance may be stretched or mixed with court/text
+        markings. Therefore we must collect a human-estimated center and keep
+        visibility=1. Clicking this button never finalizes the frame by itself.
+        If the frame already has a point, we simply change its status.
         """
         if not self.frames:
             return
+
         frame = self.frames[self.current_index]
-        self.pending_visibility_mode = None
-        self.annotations[frame.name] = {
-            "frame": frame.name,
-            "x": 0,
-            "y": 0,
-            "visibility": 0,
-            "x1": 0, "y1": 0, "x2": 0, "y2": 0,
-            "source": "MANUAL",
-            "confidence": 1.0,
-            "status": STATUS_SEVERE_BLUR,
-        }
-        self.update_all()
-        self._autosave_if_enabled()
+        annotation = self.annotations.get(frame.name)
+
+        # If a point already exists, retain it and just classify the frame.
+        if annotation and annotation.get("visibility") == 1 and annotation.get("x") is not None:
+            annotation["visibility"] = 1
+            annotation["status"] = STATUS_SEVERE_BLUR
+            annotation["source"] = "MANUAL"
+            annotation["confidence"] = 1.0
+            self.pending_visibility_mode = None
+            self.update_all()
+            self._autosave_if_enabled()
+            return
+
+        # Otherwise wait for the user to click the visible/blurred ball center.
+        self.pending_visibility_mode = "SEVERE_BLUR"
+        self._set_pending_status("SEVERE MOTION BLUR — click the visible ball center")
 
     def clear_current_annotation(self):
         if not self.frames:
