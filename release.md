@@ -1,9 +1,73 @@
-# 🚀 Frame Generator v1.0.0 — "On The Way To Burn"
+# 🚀 Frame Generator v2.0.0 — "Alela Polema"
+
+**Release Tag:** `v2.0.0`  
+**Release Name:** `v2 - Alela Polema`  
+**Release Date:** August 20, 2026  
+**Target Platform:** Windows 10 / 11 (64-bit)  
+**License:** [MIT License](LICENSE)  
+
+---
+
+## 🌟 Executive Summary
+
+We are thrilled to release **Frame Generator v2.0.0 — "Alela Polema"**!
+
+This major release transforms Frame Generator from a standalone GPU video-to-frames extractor into a full-scale **Computer Vision & Sports Analytics Workstation**. It introduces a native **TrackNet Computer Vision Annotation Tool (`AnnotationTab`)** directly embedded into a new dual-tab interface, designed specifically for rapid, micro-precision ball tracking annotation with zero UI occlusions.
+
+---
+
+## 🎯 What's New in v2.0.0 ("Alela Polema")
+
+### 🎯 1. Dedicated TrackNet Computer Vision Annotation Workstation
+- **Aspect-Ratio Preserving Viewport (`AnnotationImage`)**: Image-first canvas scaling smoothly to any window dimension without stretching or distorting source frame aspect ratios.
+- **Zero-Occlusion Layout**: All controls, frame counters, metrics, and state selectors are placed strictly beneath the image canvas, guaranteeing that no popovers or menus ever obscure ball visibility.
+- **Single-Click Center Marking**: Click directly on the ball center in the frame to record `(x, y)` pixel coordinates mapped back to original native frame resolution with visual crosshairs.
+
+### ⚡ 2. 5-State Fine-Grained Ball Visibility System
+- `● VISIBLE`: Ball center recorded (`visibility = 1`, `status = ACCEPTED`).
+- `◐ PARTIALLY OCCLUDED`: Ball partially visible behind racket/player (`visibility = 1`).
+- `✕ FULLY OCCLUDED`: Ball completely hidden (`x = 0, y = 0, visibility = 0`, `status = FULLY_OCCLUDED`).
+- `↗ OUT OF BOUNDS`: Ball has exited the court/camera frame (`x = 0, y = 0, visibility = 0`, `status = OUT_OF_BOUNDS`).
+- `≈ SEVERE MOTION BLUR`: **(New in v2)** Specifically designed for extreme velocity shots where motion blur stretches the ball into an elongated trail. Clicking the estimated center records `visibility = 1` tagged with `status = SEVERE_MOTION_BLUR`.
+
+### 📑 3. 5-Sub-Page Annotation Architecture
+- **`ANNOTATING`**: Full frame workspace with frame scrubbing slider, jump navigation, play/pause sequence preview, current-frame metadata grid, and auto-save toggle.
+- **`CSV`**: Real-time synchronized TrackNet dataset table with row double-clicking to jump directly to any frame.
+- **`RANGES`**: Contiguous segment summary table detailing rallies, occlusion spans, and out-of-bounds intervals.
+- **`STATISTICS`**: 13 real-time metric cards summarizing progress percentage, annotated counts, visibility ratios, blur distribution, and model confidence breakdowns.
+- **`SETTINGS`**: AI-assisted semi-automatic tracking configuration supporting **SAM 2.1** (Tiny, Small, Base+, Large) with Docker container integration and confidence thresholds.
+
+### ⌨️ 4. High-Speed Keyboard Navigation
+- `←` / `→`: Step backward / forward 1 frame.
+- `Shift + ←` / `Shift + →`: Step backward / forward 10 frames.
+- `Space`: Toggle 30fps continuous sequence playback.
+- `Enter` (in frame box): Jump directly to a specific frame number.
+- `SAVE & NEXT ▶`: Save annotation and advance instantly.
+
+### 📐 5. Responsive UI & Clean Project Structure
+- Adaptive window initialization dynamically scaling to available monitor dimensions (optimized from laptops up to 27"+ 4K screens).
+- Test logs, diagnostics, and build specs moved to clean `config tests/` folder.
+
+---
+
+## ⚡ Instant Quick Start (Pre-Built Executable)
+
+```powershell
+# 1. Clone the repository
+git clone https://github.com/Ayan-Crafts/Frame-Converter.git
+cd Frame-Converter
+
+# 2. Launch the standalone application directly
+.\dist\FrameGenerator\FrameGenerator.exe
+```
+
+---
+
+# 📦 Release Archive: v1.0.0 — "On The Way To Burn"
 
 **Release Tag:** `v1.0.0`  
 **Release Name:** `On The Way To Burn - v1`  
 **Release Date:** August 18, 2026  
-**Target Platform:** Windows 10 / 11 (64-bit)  
 **License:** [MIT License](LICENSE)  
 
 ---

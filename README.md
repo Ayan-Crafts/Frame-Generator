@@ -2,6 +2,7 @@
 
 <div align="center">
 
+[![Release: v2.0.0](https://img.shields.io/badge/Release-v2.0.0--Alela--Polema-blue.svg)](https://github.com/Ayan-Crafts/Frame-Converter/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![GUI Framework](https://img.shields.io/badge/GUI-PySide6%20%2F%20Qt6-41CD52.svg?logo=qt&logoColor=white)](https://pypi.org/project/PySide6/)
@@ -9,9 +10,9 @@
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-9.0%2B%20Full%20Build-007808.svg?logo=ffmpeg&logoColor=white)](https://www.gyan.dev/ffmpeg/builds/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6.svg?logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 
-**High-Throughput, Hardware-Accelerated Video Frame Extraction & Computer Vision Dataset Curation Pipeline.**
+**High-Throughput GPU-Accelerated Video Frame Extraction & TrackNet Computer Vision Annotation Workstation.**
 
-[Key Features](#-key-features) • [System Architecture](#-system-architecture) • [Benchmarks](#-performance-benchmarks) • [Prerequisites](#-prerequisites) • [Installation](#-installation) • [Usage](#-usage-guide) • [Packaging](#-building-standalone-executable) • [Author](#-developer--author)
+[Key Features](#-key-features) • [System Architecture](#-system-architecture) • [Annotation Suite](#-tracknet-annotation-suite-v2) • [Benchmarks](#-performance-benchmarks) • [Installation](#-installation--quick-start) • [Usage Guide](#-usage-guide) • [Releases](#-release-history) • [Author](#-developer--author)
 
 </div>
 
@@ -19,38 +20,56 @@
 
 ## 📌 Overview
 
-**Frame Generator** is an open-source, high-performance desktop application and video processing engine designed to solve the data-ingestion bottleneck in modern Computer Vision (CV) and Deep Learning pipelines. 
+**Frame Generator** is an open-source, high-performance desktop workstation designed to solve the two biggest data bottlenecks in modern Computer Vision (CV) and Deep Learning pipelines: **high-throughput video frame extraction** and **high-precision sports ball tracking annotation (TrackNet)**.
 
-When preparing massive video archives for object detection (YOLO, Faster R-CNN), video classification, or pose tracking, traditional CPU-bound frame extraction tools become severe bottlenecks. Frame Generator leverages native **NVIDIA CUDA (NVDEC)** hardware decoding and dynamic multi-threaded streaming to extract high-quality image sequences at **over 1,700+ FPS (35x+ realtime speed)**.
+When preparing massive video archives for object detection (YOLO, Faster R-CNN) or high-speed sports analytics (squash, tennis, badminton), conventional tools suffer from slow CPU decoding and cluttered annotation interfaces. Frame Generator bridges this gap by combining:
+1. **GPU-Accelerated Frame Extraction (`VIDEO → FRAMES`)**: Raw NVIDIA CUDA (NVDEC) hardware decoding streaming frames at **over 1,770+ FPS (35.5x realtime speed)** with dynamic resource profiling and keyframe-accurate fault-tolerant resuming.
+2. **TrackNet Computer Vision Annotation Suite (`ANNOTATION TOOL` - *New in v2*)**: A specialized, zero-occlusion image labeling workspace built for precision ball marking, motion blur categorization, automated SAM 2.1 model integration, interactive CSV management, range inspection, and live dataset telemetry.
 
-It pairs this raw extraction speed with a modern **PySide6 (Qt6)** graphical user interface, intelligent **fault-tolerant resuming**, dynamic **system resource profiling**, and persistent **job lifecycle management**.
+---
+
+## 🚀 What's New in v2 — "Alela Polema"
+
+> 💡 *Looking for the initial release? **v1.0.0 — "On The Way To Burn"** is available under [GitHub Releases](https://github.com/Ayan-Crafts/Frame-Converter/releases).*
+
+- 🎯 **Full-Featured TrackNet Annotation Tool**: Integrated dual-tab architecture embedding a dedicated annotation workstation directly into the main desktop interface.
+- 🖼️ **Zero-Occlusion Frame Canvas (`AnnotationImage`)**: Image-first viewport that preserves source aspect ratios and places all controls below the frame so visual inspection is never obscured by menus or popovers.
+- ⚡ **Severe Motion Blur Classification**: Added a dedicated labeling state for high-speed sports ball trails where motion blur elongates the ball, saving estimated center coordinates with explicit `SEVERE_MOTION_BLUR` status flags.
+- 📑 **5-Tab Annotation Workflow**:
+  - **`ANNOTATING`**: Responsive frame viewer, instant click-to-annotate crosshairs, fast frame jump navigation, play/pause preview, and auto-save.
+  - **`CSV`**: Live interactive data table displaying the full TrackNet dataset with double-click frame jumping.
+  - **`RANGES`**: Contiguous range summary for tracking rallies, occlusions, and out-of-bounds intervals.
+  - **`STATISTICS`**: 13 real-time metric cards detailing annotation progress, visibility ratios, blur frequency, and manual vs. auto counts.
+  - **`SETTINGS`**: AI model selector with Docker integration support for **SAM 2.1** (Tiny, Small, Base+, Large) and configurable confidence thresholds.
+- 📐 **Adaptive Window Geometry**: Responsive UI scaling automatically adjusting to screen geometries for optimal viewing across laptops up to 27"+ monitors.
+- 🗂️ **Clean Directory Organization**: Relocated test logs, specs, and benchmarks into `config tests/`.
 
 ---
 
 ## ✨ Key Features
 
-### ⚡ Hardware-Accelerated Decoding
+### ⚡ Hardware-Accelerated Decoding (`VIDEO → FRAMES`)
 - **NVIDIA NVDEC / CUDA Pipeline**: Zero-copy hardware video decoding via `ffmpeg -hwaccel cuda -hwaccel_output_format cuda` and `hwdownload,format=nv12` filter graphs.
 - **Multi-Vendor GPU Support**: Automatic hardware detection for NVIDIA GPUs (querying VRAM, driver version, clock utilization via `nvidia-smi`) and AMD GPUs (via Windows WMIC), with graceful multi-threaded CPU fallback.
 - **Lossless & High-Quality Modes**: High-precision frame dumps formatted as JPEG (`-q:v 2`) or PNG sequences with 6-digit zero-padded indexing (`%06d.jpg`).
+- **Dynamic Resource Profiling (`ResourceManager`)**: Adapts FFmpeg thread counts and memory allocation dynamically based on available physical CPU cores and GPU VRAM.
+- **Fault-Tolerant Resuming (`ResumeManager`)**: Scans destination directories for existing frames, detects interruption points, and performs keyframe-accurate seek (`-ss`) with frame discard filtering to resume without duplicate or dropped frames.
+- **Persistent Job State (`JobManager`)**: Structured JSON job logging in `~/.frame-generator/jobs` supporting **Start**, **Pause**, **Resume**, **Stop & Keep**, and **Cancel & Clean**.
 
-### 🖥️ Modern Desktop GUI (PySide6 / Qt6)
-- **Live Performance Dashboard**: Real-time metric cards displaying extracted frame count, instantaneous FPS, processing speed multiplier, elapsed time, and ETA.
-- **Hardware Telemetry**: Real-time monitoring of GPU load, VRAM consumption, GPU temperatures, host CPU usage, and system memory.
-- **Interactive Controls**: Non-blocking asynchronous controls for **Start**, **Pause**, **Resume**, **Stop & Keep**, and **Cancel & Clean**.
-
-### 🔄 Fault-Tolerant Resuming
-- **Smart Directory Inspection**: Scans target folders to detect existing frame counts before kicking off jobs.
-- **Keyframe-Accurate Seek**: Computes precise backward keyframe seek points (`-ss`) combined with frame-discard filters (`select='gte(n,X)'`) to eliminate duplicated or dropped frames upon resuming.
-- **Completion Signatures**: Generates lightweight `.complete` tracking files to skip already-processed videos during batch runs instantly.
-
-### 🧠 Dynamic Resource Management (`ResourceManager`)
-- **System-Aware Profiling**: Dynamically calculates optimal FFmpeg worker threads and buffer allocations based on physical CPU cores and available GPU VRAM.
-- **Thermal & Memory Safeguards**: Prevents system lockups by throttling buffer allocations when system resources run low.
-
-### 🗂️ Persistent Job Queue (`JobManager`)
-- **Structured Job History**: Maintains JSON-formatted job records under `~/.frame-generator/jobs` with unique UUIDs.
-- **Lifecycle Tracking**: Full state tracking across `created`, `processing`, `paused`, `stopped`, `completed`, and `cancelled` states.
+### 🎯 TrackNet Annotation Workstation (`ANNOTATION TOOL`)
+- **Click-to-Annotate Crosshair**: Click directly on the ball center to assign `(x, y)` pixel coordinates mapped back to native frame resolution.
+- **Comprehensive 5-State Visibility System**:
+  - `● VISIBLE`: Ball is clearly visible (`visibility = 1`, `status = ACCEPTED`).
+  - `◐ PARTIALLY OCCLUDED`: Ball is partially occluded (`visibility = 1`).
+  - `✕ FULLY OCCLUDED`: Ball is hidden behind player/racket/wall (`x = 0, y = 0, visibility = 0`, `status = FULLY_OCCLUDED`).
+  - `↗ OUT OF BOUNDS`: Ball has exited the frame (`x = 0, y = 0, visibility = 0`, `status = OUT_OF_BOUNDS`).
+  - `≈ SEVERE MOTION BLUR`: Ball is stretched by extreme velocity; records clicked center coordinates (`visibility = 1`, `status = SEVERE_MOTION_BLUR`).
+- **Fast Keyboard Navigation**:
+  - `←` / `→`: Step backward / forward 1 frame
+  - `Shift + ←` / `Shift + →`: Step backward / forward 10 frames
+  - `Space`: Toggle real-time sequence playback
+  - `Enter` (in frame box): Jump directly to a specific frame number
+- **TrackNet CSV Compatibility**: Automatically writes and synchronizes standard `annotations.csv` files with core fields (`frame`, `x`, `y`, `visibility`) and audit fields (`x1`, `y1`, `x2`, `y2`, `source`, `confidence`, `status`).
 
 ---
 
@@ -58,41 +77,56 @@ It pairs this raw extraction speed with a modern **PySide6 (Qt6)** graphical use
 
 ```mermaid
 flowchart TD
-    subgraph UI["🖥️ Presentation Layer (PySide6)"]
-        MW[MainWindow]
-        SC[StatCard Dashboard]
-        PRG[Progress & Status Monitors]
+    subgraph App["🖥️ Frame Generator Desktop Application"]
+        Tabs[QTabWidget: Dual Workstation]
+        
+        subgraph Tab1["⚡ Tab 1: VIDEO → FRAMES"]
+            MW[Converter Central View]
+            SC[StatCard Dashboard]
+            PRG[Telemetry & Progress Monitors]
+            EW[ExportWorker & QThread]
+            VE[VideoExporter Engine]
+            RM[ResourceManager]
+            RS[ResumeManager]
+        end
+
+        subgraph Tab2["🎯 Tab 2: ANNOTATION TOOL (v2)"]
+            AT[AnnotationTab Workspace]
+            AI[AnnotationImage Viewport\nAspect-Ratio Scaling & Crosshairs]
+            AP[ANNOTATING Page]
+            CP[CSV Data Table & Quick Jump]
+            RP[RANGES Segmentation Inspector]
+            SP[STATISTICS Metrics Dashboard]
+            ST[SETTINGS SAM 2.1 / Docker Config]
+        end
+
+        subgraph Core["⚙️ Core Subsystems"]
+            HD[HardwareDetector: NVIDIA SMI / WMIC]
+            SM[SystemMonitor: CPU / VRAM / Temp]
+            JM[JobManager: JSON State Persistence]
+            DS[DatasetScanner: Video Ingestion]
+        end
+
+        subgraph Ext["⚡ Execution Binaries & Models"]
+            FFMPEG[FFmpeg / FFprobe: CUDA NVDEC]
+            SAM[SAM 2.1 Docker Container: Semi-Auto Tracking]
+        end
     end
 
-    subgraph Core["⚙️ Application Core"]
-        JM[JobManager\nJSON State Persistence]
-        HD[HardwareDetector\nNVIDIA SMI / WMIC]
-        SM[SystemMonitor\nCPU / VRAM / Temp Telemetry]
-    end
-
-    subgraph Processing["🚀 Processing Engine (QThread Worker)"]
-        EW[ExportWorker]
-        VE[VideoExporter]
-        RM[ResourceManager\nDynamic Thread / VRAM Profiler]
-        RS[ResumeManager\nKeyframe Seek & Offset Verification]
-        DS[DatasetScanner\nRecursive Video Ingestion]
-    end
-
-    subgraph Binaries["⚡ Binary Execution"]
-        FFMPEG[FFmpeg / FFprobe\nCUDA & NVDEC Pipeline]
-    end
-
-    MW --> EW
-    MW --> HD
-    MW --> SM
-    MW --> JM
-    EW --> VE
+    Tabs --> Tab1
+    Tabs --> Tab2
+    MW --> EW --> VE --> FFMPEG
     VE --> RM
     VE --> RS
-    VE --> FFMPEG
-    DS --> EW
+    AT --> AI
+    AT --> AP
+    AT --> CP
+    AT --> RP
+    AT --> SP
+    AT --> ST --> SAM
+    HD --> MW
     SM --> SC
-    VE --> PRG
+    JM --> MW
 ```
 
 ### Module Breakdown
@@ -100,7 +134,8 @@ flowchart TD
 | Directory / File | Description |
 | :--- | :--- |
 | [`app/main.py`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/app/main.py) | Application entry point; initializes `QApplication` and the main window. |
-| [`app/ui/main_window.py`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/app/ui/main_window.py) | Comprehensive PySide6 user interface, stat card layouts, styles, and signal connections. |
+| [`app/ui/main_window.py`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/app/ui/main_window.py) | Main window coordinating the `VIDEO → FRAMES` converter and embedding `AnnotationTab`. |
+| [`app/ui/annotation_tab.py`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/app/ui/annotation_tab.py) | **(New in v2)** Comprehensive TrackNet annotation suite with 5 sub-pages, canvas rendering, and CSV sync. |
 | [`app/hardware/detector.py`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/app/hardware/detector.py) | Hardware probe querying NVIDIA CUDA devices, AMD GPUs, VRAM capacity, and driver versions. |
 | [`app/processing/exporter.py`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/app/processing/exporter.py) | Core video exporter building and executing CUDA-accelerated FFmpeg subprocess pipelines. |
 | [`app/processing/resource_manager.py`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/app/processing/resource_manager.py) | Dynamic resource allocator matching FFmpeg thread count to system VRAM & CPU cores. |
@@ -110,12 +145,13 @@ flowchart TD
 | [`app/jobs/job_manager.py`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/app/jobs/job_manager.py) | Job state persistence engine writing structured JSON logs to `~/.frame-generator/jobs`. |
 | [`app/monitoring/system.py`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/app/monitoring/system.py) | Telemetry collector measuring live CPU load, system RAM, GPU utilization, and VRAM. |
 | [`app/utils/ffmpeg.py`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/app/utils/ffmpeg.py) | Cross-environment FFmpeg / FFprobe path resolver (supporting bundled and system PATH binaries). |
+| [`config tests/`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/config%20tests) | Configuration files, PyInstaller spec, benchmark logs, and diagnostic test scripts. |
 
 ---
 
 ## 📊 Performance Benchmarks
 
-Benchmark performed on a host machine equipped with an **NVIDIA GeForce RTX 4050 Laptop GPU (6GB VRAM)** and **FFmpeg 9.0.1 (Full Build with CUDA/NVDEC support)**:
+Benchmark performed on an **NVIDIA GeForce RTX 4050 Laptop GPU (6GB VRAM)** and **FFmpeg 9.0.1 (Full Build with CUDA/NVDEC)**:
 
 | Metric | Benchmark Result |
 | :--- | :--- |
@@ -126,15 +162,13 @@ Benchmark performed on a host machine equipped with an **NVIDIA GeForce RTX 4050
 | **Average Extraction Speed** | **1,773.0 FPS** |
 | **Speed Multiplier** | **35.5x realtime** |
 | **GPU VRAM Utilization** | ~129 MiB / 6141 MiB (~2.1%) |
-| **GPU Temperature** | 54°C (Stable under load) |
+| **GPU Temperature** | 54.0°C (Stable under continuous load) |
 
-> 📝 *Detailed benchmark logs and hardware acceleration verification outputs can be reviewed in [`ffmpegstats.txt`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/ffmpegstats.txt) and [`ffmpegtest.txt`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/ffmpegtest.txt).*
+> 📝 *Detailed benchmark logs and hardware acceleration verification outputs can be reviewed in [`config tests/ffmpegstats.txt`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/config%20tests/ffmpegstats.txt) and [`config tests/ffmpegtest.txt`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/config%20tests/ffmpegtest.txt).*
 
 ---
 
 ## 📦 Prerequisites
-
-Before running the application, ensure your environment meets the following requirements:
 
 1. **Operating System**: Windows 10 / 11 (64-bit).
 2. **GPU Driver**: NVIDIA GPU supporting CUDA with Driver Version 520+ (CUDA 11/12/13 compatible).
@@ -147,35 +181,36 @@ Before running the application, ensure your environment meets the following requ
 
 ## 🚀 Installation & Quick Start
 
-### Option A: Run Pre-Built Executable Directly
-If you cloned the repository with the pre-built distribution:
+### Option A: Run Pre-Built Standalone Executable (Recommended)
+If you pulled or downloaded the packaged release, run the standalone executable directly:
 ```powershell
 .\dist\FrameGenerator\FrameGenerator.exe
 ```
+*No Python setup or external dependency installation required.*
 
 ---
 
-### Option B: Run from Source
+### Option B: Run from Python Source
 
 #### 1. Clone the Repository
 ```bash
-git clone https://github.com/Ayan-Crafts/Frame-Generator.git
-cd Frame-Generator
+git clone https://github.com/Ayan-Crafts/Frame-Converter.git
+cd Frame-Converter
 ```
 
-#### 2. Create and Activate a Virtual Environment
-```bash
+#### 2. Create and Activate Virtual Environment
+```powershell
 # Using PowerShell on Windows
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
-#### 3. Install Python Dependencies
+#### 3. Install Dependencies
 ```bash
 pip install PySide6 psutil
 ```
 
-#### 4. Launch Application from Source
+#### 4. Launch Application
 ```bash
 python app/main.py
 ```
@@ -184,57 +219,25 @@ python app/main.py
 
 ## 💻 Usage Guide
 
-### Running the Desktop GUI Application
-Launch the PySide6 user interface by running:
-```bash
-python app/main.py
-```
-*Or via module syntax:*
-```bash
-python -m app.main
-```
-
-### Step-by-Step GUI Workflow
-1. **Select Input Directory**: Click **Browse Input** and choose the folder containing your source videos (e.g., `Datasets/`). The dataset scanner will automatically index all video files and display total frame estimates.
-2. **Select Output Directory**: Click **Browse Output** to designate the target root for extracted frame sequences. Each video will receive its own organized subfolder.
-3. **Start Extraction**: Click **Start Extraction**. The dynamic resource manager initializes the CUDA pipeline.
-4. **Monitor Progress**: Follow real-time frame rates, speed multipliers, percentage progress bars, and live GPU/CPU utilization.
-5. **Control Options**:
-   - **Pause**: Temporarily halts extraction while preserving process state.
-   - **Resume**: Re-engages extraction seamlessly from the exact last extracted frame.
-   - **Stop (Keep)**: Stops execution and retains all extracted frames to date.
-   - **Cancel (Clean)**: Terminates FFmpeg and cleans up partial output files.
+### Workflow 1: Video to Frames Extraction (`VIDEO → FRAMES`)
+1. Switch to the **VIDEO → FRAMES** tab.
+2. Click **SELECT INPUT** to choose the folder containing your source videos (e.g., `Datasets/`).
+3. Click **SELECT OUTPUT** to set the destination folder.
+4. Click **START EXTRACTION**. The CUDA hardware engine will begin decoding.
+5. Use **PAUSE**, **RESUME**, **STOP & KEEP**, or **CANCEL & CLEAN** to manage batch execution.
 
 ---
 
-### Command-Line / Direct FFmpeg Usage
-
-If you wish to execute a standalone extraction directly from PowerShell or Bash with identical CUDA acceleration parameters:
-
-```bash
-ffmpeg -hide_banner \
-  -hwaccel cuda \
-  -hwaccel_output_format cuda \
-  -i "Datasets/your_video.mp4" \
-  -map 0:v:0 \
-  -vf "hwdownload,format=nv12" \
-  -fps_mode passthrough \
-  -q:v 2 \
-  -threads 4 \
-  -start_number 1 \
-  "output/your_video/%06d.jpg"
-```
-
-To extract at a specific fixed frame rate (e.g., 1 frame per second for sparse sampling):
-```bash
-ffmpeg -hide_banner \
-  -hwaccel cuda \
-  -hwaccel_output_format cuda \
-  -i "Datasets/your_video.mp4" \
-  -vf "hwdownload,format=nv12,fps=1" \
-  -q:v 2 \
-  "output/your_video/frame_%04d.jpg"
-```
+### Workflow 2: TrackNet Ball Annotation (`ANNOTATION TOOL`)
+1. Switch to the **ANNOTATION TOOL** tab.
+2. Click **SELECT FRAME DIRECTORY** and choose the folder of extracted frames. The tool automatically detects or creates `annotations.csv`.
+3. In the **`ANNOTATING`** sub-tab:
+   - Click the ball directly on the canvas with the mouse to mark its `(x, y)` location.
+   - Select the appropriate state: `VISIBLE`, `PARTIALLY OCCLUDED`, `FULLY OCCLUDED`, `OUT OF BOUNDS`, or `SEVERE MOTION BLUR`.
+   - Click **SAVE & NEXT ▶** (or enable **AUTO-SAVE**) to advance to the next frame.
+4. Use the keyboard shortcuts (`←`/`→` for ±1 frame, `Shift+←`/`Shift+→` for ±10 frames, `Space` for playback) for rapid continuous annotation.
+5. In the **`CSV`** sub-tab, review the full spreadsheet and double-click any row to jump directly to that frame.
+6. In the **`STATISTICS`** sub-tab, monitor overall dataset completion, blur distribution, and class breakdown.
 
 ---
 
@@ -263,29 +266,54 @@ Frame-Generator/
 │   │   └── worker.py           # Multi-threaded QThread worker controller
 │   ├── ui/                     # Graphical interface
 │   │   ├── __init__.py
-│   │   └── main_window.py      # PySide6 main window & stat card components
+│   │   ├── annotation_tab.py   # (New in v2) Complete TrackNet annotation suite
+│   │   ├── converter_tab.py    # Converter tab interfaces
+│   │   └── main_window.py      # Dual-tab main window and stat card components
 │   ├── utils/                  # Helper utilities
 │   │   ├── __init__.py
 │   │   └── ffmpeg.py           # FFmpeg & FFprobe binary path resolution
 │   ├── __init__.py
 │   └── main.py                 # Application launcher
+├── config tests/               # Configuration, spec, and benchmark logs
+│   ├── FrameGenerator.spec     # PyInstaller build specification file
+│   ├── ffmpegstats.txt         # Reference FFmpeg version and hardware codec dump
+│   ├── ffmpegtest.txt          # Sample benchmark run and GPU utilization log
+│   ├── framexy.txt             # Quick mouse coordinate diagnostic script
+│   ├── sources.txt             # External dataset and test video links
+│   └── test.txt                # Diagnostic command reference
 ├── packaging/                  # Bundled distribution dependencies
 │   └── ffmpeg/                 # Local FFmpeg/FFprobe binaries (gitignored)
-├── FrameGenerator.spec         # PyInstaller build specification file
-├── ffmpegstats.txt             # Reference FFmpeg version and hardware codec dump
-├── ffmpegtest.txt              # Sample benchmark run and GPU utilization log
-├── sources.txt                 # External dataset and test video links
-├── test.txt                    # Diagnostic command reference
 ├── .gitignore                  # Comprehensive exclusions for media, binaries & cache
 ├── LICENSE                     # MIT License
-└── README.md                   # Project documentation
+├── README.md                   # Project documentation
+└── release.md                  # Release notes archive
 ```
+
+---
+
+## 🏷️ Release History
+
+### [v2.0.0 — Alela Polema](https://github.com/Ayan-Crafts/Frame-Converter/releases) *(Current Release)*
+- Integrated full **TrackNet Computer Vision Annotation Tool** (`AnnotationTab`) with dual-tab window management.
+- Zero-occlusion aspect-ratio preserving frame canvas with native coordinate mapping.
+- Added **Severe Motion Blur** classification for high-velocity ball tracking.
+- Added **5-Page Annotation Workflow** (`ANNOTATING`, `CSV`, `RANGES`, `STATISTICS`, `SETTINGS`).
+- Added semi-automatic AI tracking integration support with Docker (SAM 2.1).
+- Added adaptive window geometry for responsive display across various screen sizes.
+
+### [v1.0.0 — On The Way To Burn](https://github.com/Ayan-Crafts/Frame-Converter/releases/tag/v1.0.0) *(Initial Release)*
+- CUDA NVDEC hardware-accelerated video-to-frames extraction engine (>1,770 FPS).
+- PySide6 desktop GUI with real-time stat cards and hardware telemetry.
+- Fault-tolerant resuming with keyframe backward seek and offset discard filters.
+- Dynamic system resource and thread allocator (`ResourceManager`).
+- Persistent JSON job state machine (`JobManager`).
+- Standalone Windows PyInstaller packaging.
 
 ---
 
 ## 🛡️ Large File & Git Management
 
-To maintain repository speed and adhere to GitHub's strict **100 MB per-file limit** (and 50 MB warning threshold), all heavy data artifacts are strictly excluded via [`.gitignore`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/.gitignore):
+To adhere to GitHub's **100 MB per-file limit**, all heavy data assets are strictly excluded via [`.gitignore`](file:///s:/Thotta_Nee_Keta/Projects/Frame-Generator/.gitignore):
 - **Video Assets**: `*.mp4`, `*.mkv`, `*.avi`, `*.mov`, `*.webm`, `*.flv`, etc.
 - **Extracted Frame Sequences**: `*.jpg`, `*.png`, `*.webp`, `*.tiff`, `output/`, `Datasets/`, `benchmark_frames/`.
 - **Binaries & Bundled Executables**: `packaging/ffmpeg/*.exe`, `*.dll`, `dist/`, `build/`.
@@ -296,14 +324,14 @@ To maintain repository speed and adhere to GitHub's strict **100 MB per-file lim
 
 ## 🔨 Building Standalone Executable
 
-You can compile **Frame Generator** into a standalone Windows executable containing all bundled dependencies using **PyInstaller**:
+Compile **Frame Generator** into a standalone Windows executable using PyInstaller:
 
 ```bash
 # Install PyInstaller
 pip install pyinstaller
 
-# Build using the provided spec file
-pyinstaller --clean FrameGenerator.spec
+# Build using the spec file located in config tests/
+pyinstaller --clean "config tests/FrameGenerator.spec"
 ```
 
 The compiled standalone application will be generated in `dist/FrameGenerator/FrameGenerator.exe`.
@@ -315,24 +343,22 @@ The compiled standalone application will be generated in `dist/FrameGenerator/Fr
 - [x] High-speed CUDA (NVDEC) frame extraction engine.
 - [x] PySide6 real-time monitoring and control dashboard.
 - [x] Smart resume logic with keyframe seek and offset correction.
-- [x] Persistent JSON job management.
-- [ ] **AI-Powered Frame Filtering**: Automatic duplicate and blurry frame detection using Laplacian variance and perceptual hashing.
-- [ ] **Direct Annotation Export**: Integration with YOLO (`labels.txt`), COCO (`annotations.json`), and Pascal VOC formats.
-- [ ] **Multi-GPU Parallelization**: Distribute batch video queues across multiple CUDA devices.
-- [ ] **In-App Video Previewer**: Embedded video player with interactive timeline frame trimming.
+- [x] TrackNet Computer Vision Annotation Tool suite.
+- [x] Severe Motion Blur ball classification.
+- [ ] Direct annotation format exporters (YOLO `.txt`, COCO `.json`, Pascal VOC `.xml`).
+- [ ] Multi-GPU parallel stream distribution for multi-video datasets.
+- [ ] Embedded video preview player with visual timeline segment trimming.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! To contribute:
+Contributions are welcome!
 1. **Fork** the repository.
 2. **Create a Feature Branch**: `git checkout -b feature/amazing-feature`
 3. **Commit Your Changes**: `git commit -m "feat: Add amazing feature"`
 4. **Push to the Branch**: `git push origin feature/amazing-feature`
 5. **Open a Pull Request**.
-
-Please ensure that no video datasets, image sequences, or binary executables are committed.
 
 ---
 
@@ -353,3 +379,4 @@ Distributed under the **MIT License**. See [`LICENSE`](file:///s:/Thotta_Nee_Ket
 [![GitHub](https://img.shields.io/badge/GitHub-Sanjay1712KSK-181717?style=for-the-badge&logo=github)](https://github.com/Sanjay1712KSK)
 
 </div>
+
