@@ -178,3 +178,4 @@ $RECYCLE.BIN/
 *.sublime-workspace
 packaging/ffmpeg/ffmpeg.exe
 packaging/ffmpeg/ffprobe.exe
+sam2.1/

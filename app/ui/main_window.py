@@ -98,10 +98,19 @@ class MainWindow(QMainWindow):
             "Frame Generator"
         )
 
-        self.resize(
-            1100,
-            820,
-        )
+        # Use a percentage of the available screen instead of a fixed
+        # window size so the dashboard scales well on laptops and 27"+ monitors.
+        screen = self.screen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            initial_width = min(1920, max(1200, int(available.width() * 0.82)))
+            initial_height = min(1200, max(760, int(available.height() * 0.82)))
+        else:
+            initial_width = 1500
+            initial_height = 900
+
+        self.setMinimumSize(1050, 700)
+        self.resize(initial_width, initial_height)
 
         # ==================================================
         # STATE
@@ -762,7 +771,7 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(
             self.annotation_tab,
-            "ANNOTATION"
+            "ANNOTATION TOOL"
         )
 
         self.setCentralWidget(

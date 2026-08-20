@@ -1,0 +1,1 @@
+python -c "import cv2; p=r'S:\Thotta_Nee_Keta\Projects\Frame-Generator\benchmark_frames\test1\000001.jpg'; img=cv2.imread(p); print('Size:', img.shape[1], 'x', img.shape[0]); cv2.imshow('Frame 000001',img); cv2.setMouseCallback('Frame 000001',lambda e,x,y,f,p: print(f'X={x}, Y={y}') if e==1 else None); cv2.waitKey(0); cv2.destroyAllWindows()"
