@@ -128,7 +128,21 @@ Produces `images/`, `heatmaps/`, `training_model1.csv`, `testing_model1.csv` and
 
 ## 📊 Benchmarks
 
-BENCHMARK_TABLE_PLACEHOLDER
+Measured end-to-end (video → JPEG files on disk) on a laptop with an RTX 4050
+Laptop GPU, 12 CPU threads, Windows 11; synthetic H.264 clips; median of 2 runs.
+Full method and data: [docs/TEST_RESULTS.md §6](docs/TEST_RESULTS.md#6-video-to-frame-benchmarks).
+
+| Clip | Frames | CPU pipeline | GPU (NVDEC) pipeline | NVDEC load |
+|---|---|---|---|---|
+| 720p50, 0.6 Mb/s, 2 min | 6,000 | 10.6 s (566 fps) | 11.7 s (512 fps) | 41 % |
+| 720p50, 20 Mb/s, 2 min | 6,000 | 24.9 s (241 fps) | 23.1 s (259 fps) | 29 % |
+| 1080p30, 55 Mb/s, 3 min | 5,400 | 56.3 s (96 fps) | 35.5 s (152 fps) | 60 % |
+| 4K30, 214 Mb/s, 30 s | 900 | 21.7 s (42 fps) | 16.8 s (53 fps) | 58 % |
+
+GPU decoding pays off for high-resolution / high-bitrate video; for typical 720p
+footage the CPU-side JPEG encoding is the bottleneck and both pipelines perform
+the same. (The earlier "1,773 FPS" figure measured decoding to `-f null` only, not
+frame extraction.)
 
 ## 🛠 Troubleshooting
 

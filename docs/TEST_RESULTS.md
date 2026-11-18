@@ -198,7 +198,38 @@ The UI never claimed acceleration in the failing configuration.
 
 ## 6. Video-to-frame benchmarks
 
-BENCH_PLACEHOLDER
+`tools/benchmark_extraction.py`, WIN, idle machine, app's own exporter
+(JPEG `-q:v 2`, thread count chosen by the resource manager), 2 runs per
+mode; NVDEC/CPU utilisation sampled every 250 ms with `nvidia-smi`/psutil.
+Synthetic H.264 clips (test pattern + noise). Output frame counts were
+identical in both modes for every clip.
+
+| Clip | Bitrate | Frames | Mode | Best / median time | Best fps | CPU avg | NVDEC avg / peak | Extra VRAM | JPEG output |
+|---|---|---|---|---|---|---|---|---|---|
+| 720p50, 120 s (like the squash source) | 0.6 Mb/s | 6,000 | CPU | 10.5 / 10.6 s | 570 | 84 % | 0 % | 0 | 326 MB |
+| | | | GPU | 10.4 / 11.7 s | 577 | 84 % | 41 / 53 % | 135 MB | 326 MB |
+| 720p50, 120 s | 20 Mb/s | 6,000 | CPU | 24.2 / 24.9 s | 248 | 79 % | 0 % | 0 | 1.1 GB |
+| | | | GPU | 21.8 / 23.1 s | 276 | 70 % | 29 / 53 % | 135 MB | 1.1 GB |
+| 1080p30, 180 s | 55 Mb/s | 5,400 | CPU | 50.3 / 56.3 s | 107 | 61 % | 0 % | 0 | 3.0 GB |
+| | | | GPU | 27.8 / 35.5 s | 194 | 76 % | 60 / 70 % | 194 MB | 3.0 GB |
+| 4K30, 30 s | 214 Mb/s | 900 | CPU | 21.5 / 21.7 s | 42 | 81 % | 0 % | 0 | 1.9 GB |
+| | | | GPU | 16.7 / 16.8 s | 54 | 55 % | 58 / 100 % | 443 MB | 1.9 GB |
+
+Findings:
+
+* NVDEC use is proven by decoder utilisation during GPU runs (29–60 %
+  average, up to 100 %) and 0 % during CPU runs.
+* Speed-up (median time): ≈1.0× for low-bitrate 720p, 1.08× for
+  high-bitrate 720p, 1.6× for 1080p, 1.3× for 4K. When decoding is cheap,
+  CPU-side JPEG encoding and disk writes dominate and the GPU cannot help;
+  GPU mode does lower CPU load at 4K (55 % vs 81 %).
+* Run-to-run variance was high for the 3 GB 1080p case (GPU 27.8 s vs
+  43.2 s) — laptop thermals and disk write-back; medians are the fairer figure.
+* The v2.0 README's "1,773 FPS, 24,352 frames in 13.73 s" came from
+  `ffmpeg … -f null` (`config tests/ffmpegtest.txt`): decode only, no JPEGs
+  written. It is not an extraction benchmark and has been removed from the README.
+* Not benchmarked: Linux (container I/O through WSL2 would not be
+  representative), other GPUs, real sports footage.
 
 ## 7. Not tested / limitations of this testing
 
