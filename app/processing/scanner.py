@@ -94,22 +94,27 @@ def output_names(videos: list[Path]) -> dict[Path, str]:
         def unique(mapping):
             return len({n.lower() for n in mapping.values()}) == len(group)
 
+        # Same folder + same stem (cam.mp4 / cam.mkv): the extension is the
+        # only difference, so it becomes part of the base name.
+        base = {}
+        for video in group:
+            twins = [
+                other for other in group
+                if other is not video and other.parent == video.parent
+            ]
+            suffix = video.suffix.lstrip(".").lower()
+            base[video] = f"{video.stem}_{suffix}" if twins else video.stem
+
+        # Then prefix the fewest parent folders that make names unique.
         max_depth = max(len(video.parent.parts) for video in group)
         candidate = {}
         for depth in range(1, max_depth + 1):
             candidate = {
-                video: "__".join(list(video.parent.parts[-depth:]) + [video.stem])
+                video: "__".join(list(video.parent.parts[-depth:]) + [base[video]])
                 for video in group
             }
             if unique(candidate):
                 break
-
-        if not unique(candidate):
-            # Same folder, same stem, different extension (cam.mp4 / cam.mkv).
-            candidate = {
-                video: f"{name}_{video.suffix.lstrip('.').lower()}"
-                for video, name in candidate.items()
-            }
 
         for video, name in candidate.items():
             safe = name.replace(":", "").replace("\\", "_").replace("/", "_")

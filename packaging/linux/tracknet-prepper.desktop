@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=TrackNetV1 Dataset Prepper
+GenericName=Video Frame Extractor and Annotation Tool
+Comment=Extract video frames (NVIDIA GPU or CPU) and annotate TrackNet datasets
+Exec=tracknet-prepper
+TryExec=tracknet-prepper
+Icon=tracknet-prepper
+Terminal=false
+Categories=AudioVideo;Video;
+Keywords=TrackNet;frames;FFmpeg;annotation;dataset;NVDEC;
+StartupNotify=true
+StartupWMClass=tracknet-prepper

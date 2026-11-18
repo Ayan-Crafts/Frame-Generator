@@ -208,6 +208,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     _configure_stdio()
+    argv = list(sys.argv[1:] if argv is None else argv)
+
+    # argparse.REMAINDER cannot capture a first argument that starts with
+    # "--", so hand convert-tracknet's arguments over untouched.
+    if argv and argv[0] == "convert-tracknet":
+        from app.utils.logging_setup import configure_logging
+
+        configure_logging(console=False)
+        return cmd_convert(argparse.Namespace(converter_args=argv[1:]))
+
     args = build_parser().parse_args(argv)
 
     from app.utils.logging_setup import configure_logging

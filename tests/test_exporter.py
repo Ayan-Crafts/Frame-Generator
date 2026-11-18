@@ -106,8 +106,8 @@ def test_progress_reports_absolute_frames_and_pipeline(media_dir, out_dir):
     "name,fragment",
     [
         ("empty.mp4", "empty"),
-        ("text.mp4", "could not be read as a video"),
-        ("broken_header.mp4", "could not be read as a video"),
+        ("text.mp4", "corrupted"),
+        ("broken_header.mp4", "corrupted"),
         ("audio_only.mp4", "No video stream"),
     ],
 )
@@ -115,8 +115,9 @@ def test_unreadable_inputs_fail_cleanly(bad_media_dir, out_dir, name, fragment):
     result, _, errors, _, _ = run(bad_media_dir / name, out_dir)
     assert result is False
     assert errors and fragment in errors[0]
-    # Nothing half-created for files that cannot even be probed.
-    assert not (out_dir / Path(name).stem).exists()
+    # No frames and no completion marker are left behind.
+    target = out_dir / Path(name).stem
+    assert not list(target.glob("*.jpg")) and not (target / ".complete").exists()
 
 
 def test_missing_file(tmp_path, out_dir):
@@ -210,8 +211,10 @@ def long_video(tmp_path_factory):
     path = tmp_path_factory.mktemp("long") / "long clip.mp4"
     codec = "libx264" if has_encoder("libx264") else "mpeg4"
     # Keyframe every 50 frames so resume must seek back and discard.
-    return make_video(path, size="640x360", rate=50, seconds=12, codec=codec,
-                      extra=["-g", "50"] if codec == "libx264" else ["-g", "50"])
+    # Large enough that a pause request lands mid-run even on a fast GPU.
+    return make_video(path, size="1280x720", rate=50, seconds=30, codec=codec,
+                      extra=["-g", "50", "-preset", "ultrafast"] if codec == "libx264"
+                      else ["-g", "50"])
 
 
 def _interrupt_after(out: Path, frames: int):
@@ -247,6 +250,65 @@ def test_pause_then_resume_is_bit_identical(long_video, tmp_path, mode):
     assert result is True, errors
     assert progress[0]["frames"] == partial - 1  # truncated frame was discarded
     assert digest(target) == expected
+
+
+@pytest.fixture(scope="module")
+def seam_videos(tmp_path_factory, media_dir):
+    """CFR sources with keyframes far apart so resume must seek + discard."""
+    root = tmp_path_factory.mktemp("seam")
+    videos = []
+    if has_encoder("libx264"):
+        # B-frames + 2 s GOP: the case that broke v2.0's exact-boundary seek.
+        videos.append(make_video(root / "bframes.mp4", size="320x180", rate=50, seconds=9,
+                                 extra=["-g", "100", "-bf", "3"]))
+        videos.append(make_video(root / "matroska.mkv", size="320x180", rate=30, seconds=9,
+                                 extra=["-g", "60"]))
+    videos.append(make_video(root / "mpeg4.avi", size="320x180", rate=25, seconds=9,
+                             codec="mpeg4", extra=["-g", "50"]))
+    vp9 = media_dir / "vp9.webm"
+    if vp9.exists():
+        videos.append(make_video(root / "vp9.webm", size="320x180", rate=25, seconds=8,
+                                 codec="libvpx-vp9", extra=["-g", "50", "-b:v", "200k"]))
+    return videos
+
+
+@pytest.mark.parametrize("mode", ["cpu", pytest.param("gpu", marks=requires_gpu)])
+def test_resume_seam_is_frame_exact(seam_videos, tmp_path, mode):
+    """Regression: v2.0 resume skipped one source frame and duplicated the next.
+
+    For every video and several resume points (including points that need a
+    keyframe seek far into the file) the resumed output must be bit-identical
+    to an uninterrupted extraction.
+    """
+    for video in seam_videos:
+        reference = tmp_path / mode / "reference"
+        assert run(video, reference, mode=mode, gpu_ready=mode == "gpu")[0] is True
+        expected = digest(reference / video.stem)
+        total = len(expected)
+        for resume_at in sorted({2, 7, total // 2 + 1, total - 3, total}):
+            work = tmp_path / mode / f"resume_{resume_at}"
+            target = work / video.stem
+            shutil.copytree(reference / video.stem, target)
+            (target / ".complete").unlink()
+            for frame in frames_in(target)[resume_at - 1:]:
+                frame.unlink()
+            result, _, errors, _, _ = run(video, work, mode=mode, gpu_ready=mode == "gpu")
+            assert result is True, (video.name, resume_at, errors)
+            got = digest(target)
+            first_bad = next((i for i, (a, b) in enumerate(zip(got, expected)) if a != b), None)
+            assert len(got) == total and first_bad is None, (
+                f"{video.name}: resume at frame {resume_at} diverged at frame "
+                f"{None if first_bad is None else first_bad + 1}"
+            )
+
+
+def test_resume_plan_avoids_exact_boundary():
+    seek, discard = exporter_module.resume_plan(379, 50.0, False)
+    # Seek lands a quarter frame before frame 129, which is then frame n=0.
+    assert seek == pytest.approx(128.75 / 50) and discard == 379 - 129
+    assert exporter_module.resume_plan(0, 50.0, False) == (0.0, 0)
+    assert exporter_module.resume_plan(100, 50.0, False) == (0.0, 100)  # inside pre-roll
+    assert exporter_module.resume_plan(5000, 29.97, True) == (0.0, 5000)  # VFR: no seek
 
 
 def test_stop_keep_preserves_frames(long_video, out_dir):
@@ -315,12 +377,13 @@ def test_stops_safely_when_disk_fills_during_export(long_video, out_dir, monkeyp
 
 
 def _fast_clock():
-    import time as real_time
+    import time as time_module
 
-    start = real_time.monotonic()
+    real_monotonic = time_module.monotonic  # captured before monkeypatching
+    start = real_monotonic()
 
     def clock():
-        return start + (real_time.monotonic() - start) * 100
+        return start + (real_monotonic() - start) * 100
 
     return clock
 

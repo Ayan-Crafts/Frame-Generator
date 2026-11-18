@@ -24,7 +24,6 @@ import collections
 import json
 import math
 import queue
-import re
 import shutil
 import subprocess
 import threading
@@ -38,7 +37,7 @@ from app.hardware.capabilities import PIPELINE_CPU, PIPELINE_GPU
 from app.processing.resource_manager import ResourceManager, free_space_gb
 from app.processing.resume import ResumeManager
 from app.utils import proc
-from app.utils.ffmpeg import get_ffmpeg_path, get_ffprobe_path
+from app.utils.ffmpeg import failure_reason, get_ffmpeg_path, get_ffprobe_path
 from app.utils.logging_setup import get_logger
 
 log = get_logger("exporter")
@@ -71,6 +70,45 @@ class VideoInfo:
     height: int = 0
     pix_fmt: str = ""
     duration: float = 0.0
+    variable_frame_rate: bool = False
+
+
+# Seek this far before the resume point, so the seek lands on a keyframe
+# at or before it; frames in between are decoded and dropped.
+RESUME_PREROLL_SECONDS = 5.0
+# Fraction of a frame to seek before the first kept frame (see resume_plan).
+SEEK_BOUNDARY_OFFSET = 0.25
+
+
+def resume_plan(resume_index: int, fps: float, variable_frame_rate: bool) -> tuple[float, int]:
+    """Return ``(seek_time, discard_frames)`` to restart at 0-based ``resume_index``.
+
+    FFmpeg's accurate input seek (``-ss`` before ``-i``) drops frames whose
+    timestamp is earlier than the seek time; ``select=gte(n,D)`` then drops
+    ``D`` more. v2.0 sought to *exactly* a frame's timestamp, where the
+    comparison is ambiguous (rounding, B-frame reordering): the boundary
+    frame was sometimes dropped, so resumed output skipped one source frame
+    and duplicated the next. Seeking a quarter frame before the boundary
+    removes the ambiguity for constant-frame-rate video.
+
+    Why a quarter and not a half: output timestamps become (k + offset)
+    frames. At offset 0.5 two neighbours can round to the same value in the
+    encoder's 1/fps time base (seen with MKV's millisecond timestamps:
+    "Invalid pts (152) <= last (152)"). At 0.25 they cannot, and the margin
+    still exceeds millisecond rounding error (<= 0.12 frame even at 240 fps).
+
+    Frame index -> timestamp only holds for constant frame rate, so VFR
+    sources are not sought at all: decoding restarts from the beginning and
+    the first ``resume_index`` frames are discarded (slower, but exact).
+    """
+    if resume_index <= 0:
+        return 0.0, 0
+    if variable_frame_rate:
+        return 0.0, resume_index
+    seek_frame = resume_index - int(round(RESUME_PREROLL_SECONDS * fps))
+    if seek_frame <= 0:
+        return 0.0, resume_index
+    return (seek_frame - SEEK_BOUNDARY_OFFSET) / fps, resume_index - seek_frame
 
 
 def _parse_rate(text: str | None) -> float:
@@ -91,27 +129,7 @@ def _parse_float(text) -> float:
     return value if math.isfinite(value) and value > 0 else 0.0
 
 
-_NOISE = ("frame=", "Conversion failed", "Terminating thread", "Task finished")
-_CAUSE_HINTS = (
-    "not supported", "unsupported", "Invalid output format", "Impossible to convert",
-    "No decoder", "Cannot load", "CUDA_ERROR", "No device", "Invalid data",
-    "Error", "error", "failed", "Failed",
-)
-_LOG_PREFIX = re.compile(r"^\[[^\]]+ @ [0-9a-fA-Fx]+\]\s*")
-
-
-def _failure_reason(stderr: str) -> str:
-    """Pick the line that explains an FFmpeg failure (not its final stats line)."""
-    lines = [
-        _LOG_PREFIX.sub("", line.strip())
-        for line in (stderr or "").splitlines()
-        if line.strip() and not any(noise in line for noise in _NOISE)
-    ]
-    for hint in _CAUSE_HINTS:
-        for line in lines:
-            if hint in line:
-                return line[:200]
-    return lines[-1][:200] if lines else "unknown error"
+_failure_reason = failure_reason  # kept for tests/back-compat
 
 
 def _tail(text: str, lines: int = 6) -> str:
@@ -253,6 +271,15 @@ class VideoExporter:
                 "Could not determine the number of frames or the duration of the video."
             )
 
+        # r_frame_rate is the stream's base rate, avg_frame_rate the measured
+        # average; a mismatch means timestamps are not evenly spaced.
+        base_rate = _parse_rate(stream.get("r_frame_rate"))
+        average_rate = _parse_rate(stream.get("avg_frame_rate"))
+        variable = bool(
+            base_rate and average_rate
+            and abs(base_rate - average_rate) / base_rate > 0.001
+        )
+
         return VideoInfo(
             fps=fps,
             total_frames=total_frames,
@@ -262,6 +289,7 @@ class VideoExporter:
             height=int(stream.get("height") or 0),
             pix_fmt=stream.get("pix_fmt", ""),
             duration=duration,
+            variable_frame_rate=variable,
         )
 
     # ==================================================
@@ -481,12 +509,9 @@ class VideoExporter:
         # Resume position
         # ------------------------------------------
 
-        target_time = (resume_frame - 1) / fps
-
-        # Seek backwards to a safe keyframe, then drop decoded frames
-        # until the resume frame.
-        seek_time = max(0.0, target_time - 5.0)
-        discard_frames = round((target_time - seek_time) * fps)
+        seek_time, discard_frames = resume_plan(
+            resume_frame - 1, fps, info.variable_frame_rate
+        )
 
         # For an exact container count, stop after exactly the missing
         # frames. For an estimated count (MKV/WebM), decode to EOF so a
@@ -578,9 +603,17 @@ class VideoExporter:
                 self.last_fallback_reason = _failure_reason(stderr)
                 return "gpu_failed"
 
+            if written_this_run == 0 and existing_frames == 0:
+                self._error(
+                    f"No frames could be decoded from {video_path.name}. The file "
+                    "may be corrupted or use a codec this FFmpeg build cannot "
+                    f"decode.\nFFmpeg: {_failure_reason(stderr)}"
+                )
+                return False
+
             self._error(
-                f"FFmpeg failed for {video_path.name} (exit code {return_code}).\n\n"
-                f"{_tail(stderr)}"
+                f"FFmpeg failed for {video_path.name} (exit code {return_code}): "
+                f"{_failure_reason(stderr)}\n\n{_tail(stderr)}"
             )
             return False
 

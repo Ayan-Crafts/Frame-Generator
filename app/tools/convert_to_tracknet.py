@@ -381,9 +381,9 @@ def main(argv=None):
 
     if not annotation_csv.exists():
 
-        raise FileNotFoundError(
-            f"annotations.csv not found:\n"
-            f"{annotation_csv}"
+        parser.error(
+            f"annotations.csv not found: {annotation_csv} "
+            "(point --input at a frame folder annotated with the ANNOTATION TOOL)"
         )
 
     output_images = (

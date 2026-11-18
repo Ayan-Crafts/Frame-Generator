@@ -30,7 +30,13 @@ from pathlib import Path
 import psutil
 
 from app.utils import proc
-from app.utils.ffmpeg import FFmpegInfo, FFmpegNotFoundError, probe_ffmpeg
+from app.utils.ffmpeg import (
+    FFmpegInfo,
+    FFmpegNotFoundError,
+    failure_reason,
+    nvdec_hint,
+    probe_ffmpeg,
+)
 from app.utils.logging_setup import get_logger
 from app.utils.paths import resource_path
 
@@ -216,11 +222,6 @@ def detect_nvidia(smi: str | None) -> tuple[list[NvidiaGPU], str | None, str | N
 # ----------------------------------------------------------------------
 
 
-def _last_error_line(text: str) -> str:
-    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
-    return lines[-1][:200] if lines else ""
-
-
 def verify_nvdec(info: FFmpegInfo) -> tuple[str, str]:
     if not info.cuda_hwaccel:
         return "unavailable", "(this FFmpeg build has no CUDA hwaccel)"
@@ -243,7 +244,8 @@ def verify_nvdec(info: FFmpegInfo) -> tuple[str, str]:
         return "failed", "(test decode timed out or could not start)"
     if result.returncode == 0:
         return "verified", "(H.264 test clip decoded on GPU)"
-    return "failed", f"({_last_error_line(result.stderr)})"
+    hint = nvdec_hint(result.stderr)
+    return "failed", f"({failure_reason(result.stderr)})" + (f" - {hint}" if hint else "")
 
 
 def verify_nvenc(info: FFmpegInfo) -> tuple[str, str]:
@@ -261,7 +263,7 @@ def verify_nvenc(info: FFmpegInfo) -> tuple[str, str]:
         return "failed", "(test encode timed out or could not start)"
     if result.returncode == 0:
         return "verified", "(H.264 test encode succeeded)"
-    return "failed", f"({_last_error_line(result.stderr)})"
+    return "failed", f"({failure_reason(result.stderr)})"
 
 
 # ----------------------------------------------------------------------

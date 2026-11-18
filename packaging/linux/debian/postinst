@@ -1,0 +1,23 @@
+#!/bin/sh
+# Post-install: report detected dependencies and GPU capability.
+# Informational only - it never fails the installation.
+set -e
+
+if [ "$1" = "configure" ] && [ -x /opt/tracknet-prepper/tracknet-prepper-cli ]; then
+    report_dir="$(mktemp -d)"
+    echo "TrackNetV1 Dataset Prepper: checking FFmpeg and NVIDIA GPU support..."
+    if TNP_DATA_DIR="$report_dir" /opt/tracknet-prepper/tracknet-prepper-cli doctor; then
+        :
+    else
+        status=$?
+        if [ "$status" = 3 ]; then
+            echo ""
+            echo "NOTE: FFmpeg 5.1+ was not found, so video extraction is disabled."
+            echo "      Install it with:  sudo apt install ffmpeg"
+            echo "      (The annotation tool works without it.)"
+        fi
+    fi
+    rm -rf "$report_dir"
+fi
+
+exit 0

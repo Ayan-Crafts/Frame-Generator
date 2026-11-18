@@ -238,6 +238,48 @@ def probe_ffmpeg(refresh: bool = False) -> FFmpegInfo:
         return info
 
 
+_NOISE = ("frame=", "Conversion failed", "Terminating thread", "Task finished")
+_CAUSE_HINTS = (
+    "Cannot load", "not supported", "unsupported", "Invalid output format",
+    "Impossible to convert", "No decoder", "CUDA_ERROR", "No device", "Invalid data",
+    "Invalid pts", "Error", "error", "failed", "Failed",
+)
+_LOG_PREFIX = re.compile(r"^\[[^\]]+ @ [0-9a-fA-Fx]+\]\s*")
+
+
+def failure_reason(stderr: str) -> str:
+    """Pick the line that explains an FFmpeg failure (not its final stats line)."""
+    lines = [
+        _LOG_PREFIX.sub("", line.strip())
+        for line in (stderr or "").splitlines()
+        if line.strip() and not any(noise in line for noise in _NOISE)
+    ]
+    for hint in _CAUSE_HINTS:
+        for line in lines:
+            if hint in line:
+                return line[:200]
+    return lines[-1][:200] if lines else "unknown error"
+
+
+def nvdec_hint(stderr: str) -> str:
+    """Actionable advice for the most common NVDEC set-up failures."""
+    text = stderr or ""
+    if "nvcuvid" in text:
+        if sys.platform.startswith("linux"):
+            return (
+                "The NVIDIA video decode library (libnvcuvid) is missing. Native "
+                "Ubuntu: install the matching libnvidia-decode-<driver> package "
+                "(included with nvidia-driver-<version>). Docker: run with "
+                "--gpus all -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,video."
+            )
+        return "The NVIDIA video decode library (nvcuvid.dll) is missing; reinstall/update the NVIDIA driver."
+    if "libcuda" in text or "nvcuda" in text or "CUDA_ERROR_NO_DEVICE" in text:
+        return "The CUDA driver library could not be used; update the NVIDIA driver."
+    if "CUDA_ERROR_UNSUPPORTED_PTX_VERSION" in text or "too old" in text:
+        return "The NVIDIA driver is too old for this FFmpeg build; update the driver."
+    return ""
+
+
 def reset_probe_cache() -> None:
     global _probe_cache
     with _probe_lock:

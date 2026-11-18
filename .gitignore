@@ -181,3 +181,15 @@ $RECYCLE.BIN/
 packaging/ffmpeg/ffmpeg.exe
 packaging/ffmpeg/ffprobe.exe
 sam2.1/
+# ------------------------------------------------------------------
+# Source assets that must be tracked despite the media rules above
+# ------------------------------------------------------------------
+!app/resources/icon.png
+!app/resources/selftest_h264.mp4
+!packaging/windows/app.ico
+
+# Build caches / outputs
+build/
+dist/
+release/
+.pytest_cache/

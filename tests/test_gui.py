@@ -104,6 +104,84 @@ def test_failed_video_does_not_stop_batch(qapp, window, media_dir, bad_media_dir
                for kind, text in silence_dialogs)
 
 
+@pytest.fixture(scope="module")
+def slow_video_dir(tmp_path_factory):
+    from conftest import has_encoder, make_video
+
+    root = tmp_path_factory.mktemp("slow")
+    codec = "libx264" if has_encoder("libx264") else "mpeg4"
+    make_video(root / "long one.mp4", size="1280x720", rate=50, seconds=30, codec=codec,
+               extra=["-g", "50"] + (["-preset", "ultrafast"] if codec == "libx264" else []))
+    return root
+
+
+def _start(window, src, out, mode_index=2):
+    from app.processing.scanner import DatasetScanner
+
+    window.input_directory = str(src)
+    window.output_directory = str(out)
+    window.dataset_info = DatasetScanner().scan(str(src))
+    window.mode_combo.setCurrentIndex(mode_index)
+    window.start_export()
+
+
+@requires_ffmpeg
+def test_pause_and_resume_through_gui(qapp, window, slow_video_dir, tmp_path):
+    out = tmp_path / "out"
+    target = out / "long one"
+    _start(window, slow_video_dir, out)
+    wait_until(qapp, lambda: len(list(target.glob("*.jpg"))) > 50, timeout=60)
+    window.toggle_pause()
+    wait_until(qapp, lambda: window.pause_button.text() == "RESUME EXPORT", timeout=30)
+    assert not window.worker.isRunning()
+    paused_frames = len(list(target.glob("*.jpg")))
+    assert 0 < paused_frames < 1500
+    window.toggle_pause()  # RESUME
+    wait_until(qapp, lambda: window.worker is None, timeout=240)
+    assert (target / ".complete").exists()
+    assert len(list(target.glob("*.jpg"))) == 1500
+
+
+@requires_ffmpeg
+def test_cancel_delete_while_paused(qapp, window, slow_video_dir, tmp_path, monkeypatch):
+    """Regression: CANCEL & DELETE after PAUSE was a silent no-op in v2.0."""
+    out = tmp_path / "out"
+    target = out / "long one"
+    _start(window, slow_video_dir, out)
+    wait_until(qapp, lambda: len(list(target.glob("*.jpg"))) > 20, timeout=60)
+    window.toggle_pause()
+    wait_until(qapp, lambda: window.pause_button.text() == "RESUME EXPORT", timeout=30)
+
+    class FakeDialog:
+        def __init__(self, *a, **k):
+            self.buttons = []
+
+        def setWindowTitle(self, *a): pass
+        def setText(self, *a): pass
+
+        def addButton(self, text, role):
+            self.buttons.append(text)
+            return text
+
+        def exec(self): pass
+
+        def clickedButton(self):
+            return "CANCEL & DELETE"
+
+    import app.ui.main_window as mw
+
+    monkeypatch.setattr(mw, "QMessageBox", type("MB", (), {
+        **{k: getattr(QMessageBox, k) for k in ("Yes", "No", "AcceptRole", "DestructiveRole",
+                                               "RejectRole")},
+        "question": staticmethod(lambda *a, **k: QMessageBox.Yes),
+        "__new__": lambda cls, *a, **k: FakeDialog(),
+    }))
+    window.show_cancel_options()
+    assert not target.exists()
+    assert window.start_button.isEnabled()
+    assert window.worker is None and window.job_id is None
+
+
 def test_start_without_directories_warns(window, silence_dialogs):
     window.start_export()
     assert silence_dialogs and silence_dialogs[0][0] == "warning"

@@ -1,0 +1,14 @@
+#!/bin/sh
+# User data (logs in ~/.local/state/tracknet-prepper, job history in
+# ~/.frame-generator, and all extracted frames/datasets) lives in users'
+# home directories and is intentionally left untouched on remove and purge.
+set -e
+
+case "$1" in
+    purge)
+        echo "TrackNetV1 Dataset Prepper removed. Per-user logs/job history were kept:"
+        echo "  ~/.local/state/tracknet-prepper  and  ~/.frame-generator"
+        ;;
+esac
+
+exit 0

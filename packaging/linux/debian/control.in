@@ -1,0 +1,21 @@
+Package: tracknet-prepper
+Version: @VERSION@
+Section: video
+Priority: optional
+Architecture: amd64
+Installed-Size: @INSTALLED_SIZE@
+Maintainer: Sanjay Kumar S <Sanjay1712KSK@users.noreply.github.com>
+Homepage: https://github.com/Sanjay1712KSK
+Depends: libc6 (>= 2.39), libegl1, libgl1, libfontconfig1, libfreetype6, libdbus-1-3, libglib2.0-0t64, libxkbcommon0, libxkbcommon-x11-0, libx11-6, libx11-xcb1, libxcb1, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-shape0, libxcb-shm0, libxcb-sync1, libxcb-xfixes0, libxcb-xinerama0, libxcb-xkb1, libxcb-render0, libwayland-client0, libwayland-cursor0, libwayland-egl1
+Recommends: ffmpeg (>= 7:5.1)
+Description: TrackNetV1 Dataset Prepper - video to frames and TrackNet annotation
+ Desktop workstation for preparing TrackNet V1 ball-tracking datasets:
+ high-throughput video-to-JPEG frame extraction (NVIDIA NVDEC decoding when a
+ working GPU, driver and FFmpeg build are detected and verified; automatic CPU
+ fallback otherwise), a TrackNet annotation tool, and a converter to TrackNet
+ V1 training data.
+ .
+ The Python runtime and Qt are bundled under /opt/tracknet-prepper; the system
+ Python is not used or modified. FFmpeg comes from Ubuntu (installed
+ automatically as a recommended package). NVIDIA drivers are never installed
+ by this package.
