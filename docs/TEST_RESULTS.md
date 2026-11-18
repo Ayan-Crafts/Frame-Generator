@@ -116,11 +116,73 @@ FINAL_LINUX_PLACEHOLDER
 
 ## 4. Windows
 
-WINDOWS_PLACEHOLDER
+### 4.1 Build (`packaging/windows/build_windows.ps1`)
+
+| Step | Result |
+|---|---|
+| Isolated build venv (Python 3.12.10, PySide6-Essentials 6.12.0, Pillow 13.0.0, psutil 7.2.2) | OK |
+| Test suite | 89 passed |
+| PyInstaller (one-folder, GUI + CLI) | OK |
+| Frozen CLI `doctor` | OK — bundled FFmpeg found, NVDEC/NVENC VERIFIED |
+| Frozen GUI `--smoke-test` | OK — window shown in ≈3.8 s (cold), screenshot rendered correctly at 1259×760 logical |
+| Portable zip | 211 MB |
+| Inno Setup | **First attempt failed: "Out of memory"** (32-bit compiler, `lzma2/ultra64`, 4 threads) → fixed with `LZMAUseSeparateProcess=yes`, `lzma2/max`; compiled in 66 s → 143.5 MB |
+
+### 4.2 Installer test (`packaging/windows/test_installer.ps1`)
+
+Per-user silent install into `build\installer-test\Program Files Ünïcode\TrackNet Prepper`.
+
+**First run: found a real installer defect** — the bundled-FFmpeg component
+was not installed although `/COMPONENTS="app,ffmpeg"` was given: the
+automatic "compatible FFmpeg already on PATH → deselect bundled copy" logic
+also runs in silent mode and overrode the explicit command-line choice; an
+empty `ffmpeg` folder was also left by `createallsubdirs`. Fixed (explicit
+`/COMPONENTS` / `/TYPE` always win; flag removed); the aborted run's
+installation was uninstalled and the test made to always uninstall in a
+`finally` block.
+
+Second run — **23 passed, 0 failed**:
+
+| Area | Checks |
+|---|---|
+| Install | exit 0 (38 s); GUI/CLI exes; bundled FFmpeg; Start-menu shortcut; per-user uninstall registry entry |
+| Post-install verification | `install-check.json`: `ffmpeg_ok=True source=bundled nvdec=verified gpu_pipeline_ready=True` |
+| Installed CLI | `doctor` OK; `extract` AUTO → 200/200 frames via `GPU decode (NVDEC)`; CPU → 200/200 via `CPU decode`; input `média in\clip dir\vidéo test.avi`, output `frames out ✓` |
+| Installed GUI | launches, renders (screenshot), writes log |
+| Repair | re-run over existing install: exit 0, app works |
+| Reuse existing FFmpeg | reinstall with `/COMPONENTS="app"`: bundled copy removed; app uses `C:\Program Files\ffmpeg-9.0.1-full_build\…\ffmpeg.exe` (`source=system`) |
+| Uninstall | exit 0; program files, Start-menu folder and registry entry removed; extracted frames kept; logs kept (silent uninstall) |
+
+Not automated: the interactive wizard pages (System check page text,
+component pre-selection display, uninstall "remove logs?" prompt) and an
+all-users (elevated) install. The detection code behind the System check page
+ran in every silent install without errors, and its effect (component
+choice) was exercised above.
+
+### 4.3 Clean-machine status
+
+No clean Windows VM was available; all Windows tests ran on the development
+laptop, which already had Python, FFmpeg and the CUDA toolkit. The frozen
+app does not use any of them except FFmpeg (bundled copy or `PATH`), and the
+installer test ran with the bundled FFmpeg. The manual checklist in
+`docs/INSTALLATION_WINDOWS.md` §6 covers a clean machine.
 
 ## 5. GPU status summary
 
-GPU_PLACEHOLDER
+| Layer | WIN (native) | UBU container, default `--gpus all` | UBU container + `video` capability |
+|---|---|---|---|
+| GPU detected (`nvidia-smi`) | ✅ RTX 4050 Laptop, 6141 MiB, compute 8.9 | ✅ same GPU | ✅ same GPU |
+| Driver / CUDA driver API | ✅ 621.24 / 13.5 | ✅ 620.73.02 (WSL) / 13.5 | ✅ same |
+| FFmpeg CUDA hwaccel compiled in | ✅ (Gyan 9.0.1, system and bundled) | ✅ (Ubuntu 6.1.1) | ✅ |
+| NVDEC pipeline self-test | ✅ **VERIFIED** | ❌ **FAILED** — `Cannot load libnvcuvid.so.1` (Docker's default capabilities omit the NVDEC library). App reported this, showed the libnvcuvid hint, and used the CPU | ✅ **VERIFIED** |
+| NVENC self-test (informational) | ✅ VERIFIED | ❌ failed (same cause) | ✅ VERIFIED |
+| GPU extraction workload | ✅ GPU tests pass; frame counts equal CPU; NVDEC utilisation measured (§6) | n/a (CPU fallback verified) | ✅ GPU tests pass (89/89); installed-package extraction used `GPU decode (NVDEC)` |
+| GPU → CPU fallback for undecodable stream | ✅ H.264 4:4:4 and 10-bit HEVC | n/a | ✅ H.264 4:4:4 |
+
+Interpretation: GPU acceleration is **verified** on Windows (native) and on
+Ubuntu 24.04 inside Docker on WSL2. It is **untested** on a native Ubuntu
+install with the NVIDIA Linux driver and on GPUs other than the RTX 4050.
+The UI never claimed acceleration in the failing configuration.
 
 ## 6. Video-to-frame benchmarks
 

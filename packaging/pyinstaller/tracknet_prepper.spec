@@ -76,12 +76,16 @@ if not IS_WINDOWS:
         "plugins/egldeviceintegrations/",
         "plugins/generic/",
     )
+    # Exact system sonames ("libfoo.so..."). Pillow's vendored copies are
+    # named "libfoo-<hash>.so..." and must be kept (its FreeType needs them).
     DROP_LIBS = (
-        "libQt6Network", "libQt6EglFSDeviceIntegration", "libQt6EglFsKmsSupport",
-        "libgtk-3", "libgdk-3", "libgdk_pixbuf", "libatk-", "libatk_bridge", "libatspi",
-        "libcairo", "libpango", "libharfbuzz", "libthai", "libdatrie", "libfribidi",
-        "libgraphite2", "libpixman", "libepoxy", "libgssapi_krb5", "libkrb5",
-        "libk5crypto", "libkeyutils", "libjpeg.so",
+        "libQt6Network.so", "libQt6EglFSDeviceIntegration.so", "libQt6EglFsKmsSupport.so",
+        "libgtk-3.so", "libgdk-3.so", "libgdk_pixbuf-2.0.so", "libatk-1.0.so",
+        "libatk-bridge-2.0.so", "libatspi.so", "libcairo.so", "libcairo-gobject.so",
+        "libpango-1.0.so", "libpangocairo-1.0.so", "libpangoft2-1.0.so", "libharfbuzz.so",
+        "libthai.so", "libdatrie.so", "libfribidi.so", "libgraphite2.so", "libpixman-1.so",
+        "libepoxy.so", "libgssapi_krb5.so", "libkrb5.so", "libkrb5support.so",
+        "libk5crypto.so", "libkeyutils.so", "libjpeg.so",
     )
 
     def _keep(entry):
@@ -89,7 +93,7 @@ if not IS_WINDOWS:
         name = dest.rsplit("/", 1)[-1]
         if any(part in dest for part in DROP_PATHS):
             return False
-        return not any(name.startswith(prefix) for prefix in DROP_LIBS)
+        return not any(name.startswith(soname) for soname in DROP_LIBS)
 
     for analysis in (gui_a, cli_a):
         analysis.binaries = [entry for entry in analysis.binaries if _keep(entry)]

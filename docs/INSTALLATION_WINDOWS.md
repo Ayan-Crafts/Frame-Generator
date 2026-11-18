@@ -31,6 +31,22 @@ No Python, pip, CUDA toolkit or PATH changes are needed.
    is available it tells you how to fix it.
 8. Launch from the Start menu (**TrackNetV1 Dataset Prepper**) or the desktop.
 
+### Silent / scripted installation
+
+```powershell
+# per-user, with bundled FFmpeg, no prompts
+.\TrackNetV1_Dataset_Prepper_V2_Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /COMPONENTS="app,ffmpeg" /LOG="setup.log"
+# reuse an FFmpeg already on PATH instead
+... /COMPONENTS="app"
+# all users (run elevated)
+... /ALLUSERS
+```
+
+An explicit `/COMPONENTS=` or `/TYPE=` always overrides the automatic FFmpeg
+choice. Without it, silent installs use the same automatic choice as the
+wizard. Silent uninstall: `"<install dir>\unins000.exe" /VERYSILENT` (keeps
+logs and job history).
+
 ### Repair / upgrade
 
 Run the same (or a newer) installer again. It installs over the existing
@@ -76,8 +92,11 @@ driver, CUDA driver API, NVDEC/NVENC test results) and can copy it.
 
 ## 4. GPU compatibility
 
-* Required: an NVIDIA GPU with NVDEC (GeForce GTX 600 series / Kepler or
-  newer) and a current NVIDIA driver. Install or update the driver from
+* Required: an NVIDIA GPU with NVDEC and a **recent** NVIDIA driver. Current
+  FFmpeg builds (including the bundled 9.x) are compiled against recent NVIDIA
+  Video Codec SDK headers, which need a correspondingly recent driver; GPUs
+  limited to old drivers (e.g. Kepler) may therefore fail the self-test — the
+  app then reports why and uses the CPU. Install or update the driver from
   NVIDIA; the installer never installs or changes drivers.
 * Not required: the CUDA Toolkit. FFmpeg loads NVDEC from the driver.
 * Codec support depends on the GPU generation (e.g. AV1 decode needs RTX 30

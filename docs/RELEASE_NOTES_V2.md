@@ -27,7 +27,7 @@ No Python, pip, CUDA toolkit or manual PATH setup is needed on either platform.
 | Qt (bundled) | PySide6-Essentials 6.12.0 |
 | Other bundled libraries | Pillow 13.0.0, psutil 7.2.2 |
 | FFmpeg | ≥ 5.1. Windows: optional bundled copy; Linux: Ubuntu `ffmpeg` 6.1.1 via apt |
-| NVIDIA GPU decoding | Any NVDEC-capable NVIDIA GPU (Kepler or newer) with a working driver. Not bundled, never modified. CUDA Toolkit not required |
+| NVIDIA GPU decoding | An NVDEC-capable NVIDIA GPU with a driver recent enough for the FFmpeg build in use (verified at start-up by a real test decode; otherwise CPU). Drivers are not bundled or modified. CUDA Toolkit not required |
 | Tested NVIDIA GPU | GeForce RTX 4050 Laptop GPU (Ada, 6 GB), driver 621.24 (Windows) / 620.73.02 via WSL2 (Ubuntu container) |
 | CPU fallback | Always available; same output, slower |
 
@@ -131,6 +131,23 @@ No Python, pip, CUDA toolkit or manual PATH setup is needed on either platform.
   above.
 * Job history stays in `~/.frame-generator/jobs`.
 * Converter default output is unchanged.
+
+## FFmpeg bundled in the Windows artifacts — read before publishing
+
+The Windows installer and portable zip produced on 2026-11-18 bundle the
+**Gyan.dev FFmpeg 9.0.1 "full" build** that was installed on the build
+machine (`build_windows.ps1 -FFmpegDir …`). That build is **GPL v3**
+(`--enable-gpl --enable-version3`). Distributing it publicly requires
+offering its corresponding source code (Gyan.dev publishes it alongside
+its builds), not just a link to ffmpeg.org.
+
+The build script's default instead downloads a pinned, SHA-256-verified
+**BtbN LGPL** build (`packaging/ffmpeg_pins.json`), which includes CUDA/NVDEC
+and avoids GPL obligations for the bundled binary. That archive was
+downloaded and its hash verified, but running a downloaded binary was not
+permitted in the build session, so the LGPL variant has **not** been
+test-executed. Before a public release, rebuild without `-FFmpegDir` and run
+`packaging/windows/test_installer.ps1`.
 
 ## Known issues and limitations
 
