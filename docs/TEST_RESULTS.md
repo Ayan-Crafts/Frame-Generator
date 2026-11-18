@@ -112,7 +112,19 @@ Fresh `ubuntu:24.04` container, GPU flags on, package
 
 ### 3.1 Final build
 
-FINAL_LINUX_PLACEHOLDER
+Two fixes after the first run: unused Qt plugins (GTK3 platform theme,
+VNC, TUIO touch) and the system libraries only they used are excluded from
+the Linux bundle, and `libwayland-client0/-cursor0/-egl1` were added to
+`Depends`. (An intermediate rebuild also dropped Pillow's *vendored*
+`libharfbuzz-<hash>.so`; caught by D4 and fixed by matching exact sonames.)
+
+Final package `tracknet-prepper_2.1.0_amd64.deb` (40.3 MB, installed
+≈ 160 MB, SHA-256 `3a61fe61934578daa8d575a748ea1722ca1a8c26f5a9096ab8e1723dd85b93b5`):
+
+* Build: test suite **89 passed** inside the build container (GPU flags on).
+* `test_deb.sh` in a fresh container: **28 passed, 0 failed** (all checks in
+  the table above, including D4: every bundled library resolves on a
+  minimal `--no-install-recommends` system).
 
 ## 4. Windows
 
