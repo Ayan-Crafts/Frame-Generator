@@ -1,10 +1,12 @@
+import os
+import shutil
 from pathlib import Path
-import subprocess
 import time
 
 import psutil
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QTabWidget,
     QMainWindow,
@@ -19,14 +21,34 @@ from PySide6.QtWidgets import (
     QFrame,
     QProgressBar,
     QSizePolicy,
+    QComboBox,
+    QPlainTextEdit,
+    QDialog,
+    QDialogButtonBox,
+    QApplication,
+    QScrollArea,
 )
 
+from app import APP_NAME, APP_VERSION
+from app.hardware.capabilities import PIPELINE_CPU, PIPELINE_GPU, get_report
 from app.hardware.detector import HardwareDetector
-from app.processing.scanner import DatasetScanner
+from app.processing.exporter import VideoExporter, VideoProbeError
+from app.processing.scanner import DatasetScanner, VIDEO_EXTENSIONS, output_names
 from app.processing.worker import ExportWorker
 from app.jobs.job_manager import JobManager
+from app.utils.logging_setup import get_logger
+from app.utils.paths import log_dir
 
 from app.ui.annotation_tab import AnnotationTab
+from app.ui.background import FunctionTask, TelemetryThread, directory_jpeg_bytes
+
+log = get_logger("ui")
+
+ACCELERATION_MODES = [
+    ("AUTO (GPU if verified)", "auto"),
+    ("GPU (NVDEC) only", "gpu"),
+    ("CPU only", "cpu"),
+]
 
 
 class StatCard(QFrame):
@@ -95,7 +117,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle(
-            "Frame Generator"
+            f"{APP_NAME} {APP_VERSION} — Frame Generator"
         )
 
         # Use a percentage of the available screen instead of a fixed
@@ -119,9 +141,19 @@ class MainWindow(QMainWindow):
         self.input_directory = ""
         self.output_directory = ""
 
+        # Presence only. Whether the pipeline can actually use the GPU is
+        # decided by the capability report, probed in the background.
         self.hardware = (
             HardwareDetector().detect()
         )
+        self.capabilities = None
+        self._capability_task = None
+        self._frame_count_task = None
+        self._output_size_task = None
+        self._finished_workers = []
+        self.failed_videos = {}
+        self.current_pipeline = None
+        self._job_ended = True
 
         self.worker = None
         self.dataset_info = None
@@ -330,6 +362,20 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(
             self.hardware_header
         )
+
+        self.system_check_button = QPushButton("SYSTEM CHECK")
+        self.system_check_button.setToolTip(
+            "Show detected FFmpeg, NVIDIA GPU, driver and verified acceleration."
+        )
+        self.system_check_button.clicked.connect(self.show_system_check)
+        header_layout.addWidget(self.system_check_button)
+
+        logs_button = QPushButton("LOGS")
+        logs_button.setToolTip(f"Open the log folder:\n{log_dir()}")
+        logs_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_dir())))
+        )
+        header_layout.addWidget(logs_button)
 
         main_layout.addLayout(
             header_layout
@@ -577,6 +623,16 @@ class MainWindow(QMainWindow):
             "Frame 0 / 0"
         )
 
+        self.pipeline_label = QLabel(
+            "Pipeline: --"
+        )
+        self.pipeline_label.setObjectName(
+            "statSubtitle"
+        )
+        self.pipeline_label.setToolTip(
+            "Which stages run on the GPU and which on the CPU for the current video."
+        )
+
         self.current_progress = (
             QProgressBar()
         )
@@ -600,6 +656,10 @@ class MainWindow(QMainWindow):
 
         current_layout.addWidget(
             self.current_frame_label
+        )
+
+        current_layout.addWidget(
+            self.pipeline_label
         )
 
         current_layout.addWidget(
@@ -702,6 +762,25 @@ class MainWindow(QMainWindow):
 
         controls = QHBoxLayout()
 
+        mode_label = QLabel("ACCELERATION")
+        mode_label.setObjectName("sectionTitle")
+        controls.addWidget(mode_label)
+
+        self.mode_combo = QComboBox()
+        for text, value in ACCELERATION_MODES:
+            self.mode_combo.addItem(text, value)
+        self.mode_combo.setToolTip(
+            "AUTO: decode on the NVIDIA GPU when the self-test passed, otherwise "
+            "CPU; falls back to CPU per video if the GPU cannot decode it.\n"
+            "GPU: always use NVDEC (fails if unsupported).\n"
+            "CPU: never use the GPU (slower, works everywhere)."
+        )
+        self.mode_combo.setStyleSheet(
+            "QComboBox { background: #1e293b; color: #f8fafc; border: 1px solid #334155;"
+            " border-radius: 7px; padding: 9px; min-width: 190px; }"
+        )
+        controls.addWidget(self.mode_combo)
+
         self.start_button = QPushButton(
             "START EXPORTING"
         )
@@ -754,14 +833,38 @@ class MainWindow(QMainWindow):
             self.cancel_button
         )
 
-        main_layout.addLayout(
-            controls
-        )
-
         self.tabs = QTabWidget()
 
+        # On laptop screens (e.g. 1366x768, or 1080p at 125% scaling) the
+        # page needs more height than the window has; v2.0 squashed the
+        # SELECT buttons to empty bars and overlapped the card rows. A
+        # scroll area keeps every widget at its natural size.
+        converter_scroll = QScrollArea()
+        converter_scroll.setWidgetResizable(True)
+        converter_scroll.setFrameShape(QFrame.NoFrame)
+        converter_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        central.setObjectName("converterPage")
+        central.setStyleSheet("QWidget#converterPage { background: #0f172a; }")
+        converter_scroll.setWidget(central)
+
+        # Controls stay pinned below the scrollable content.
+        converter_page = QWidget()
+        converter_page.setObjectName("converterPage")
+        page_layout = QVBoxLayout(converter_page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
+        page_layout.addWidget(converter_scroll, 1)
+        controls_bar = QFrame()
+        controls_bar.setObjectName("controlsBar")
+        controls_bar.setStyleSheet(
+            "QFrame#controlsBar { background: #0f172a; border-top: 1px solid #263244; }"
+        )
+        controls.setContentsMargins(24, 10, 24, 12)
+        controls_bar.setLayout(controls)
+        page_layout.addWidget(controls_bar)
+
         self.tabs.addTab(
-            central,
+            converter_page,
             "VIDEO → FRAMES"
         )
 
@@ -783,13 +886,14 @@ class MainWindow(QMainWindow):
         # ==================================================
 
         self.previous_disk_bytes = (
-            psutil.disk_io_counters()
-            .write_bytes
+            self._disk_write_bytes()
         )
 
         self.previous_disk_time = (
             time.monotonic()
         )
+
+        self._last_output_size_update = 0.0
 
         self.monitor_timer = QTimer(
             self
@@ -803,34 +907,123 @@ class MainWindow(QMainWindow):
             1000
         )
 
+        # GPU telemetry (nvidia-smi) runs on its own thread.
+        self.telemetry = None
+        if self.hardware is not None and getattr(self.hardware, "vendor", "") == "NVIDIA":
+            self.telemetry = TelemetryThread(parent=self)
+            self.telemetry.sample.connect(self.update_nvidia_stats)
+            self.telemetry.start()
+        else:
+            for card in (self.gpu_card, self.gpu_usage_card, self.vram_card, self.temperature_card):
+                card.set_value("N/A")
+            if self.hardware is not None:
+                self.gpu_card.set_value(self.hardware.vendor)
+                self.gpu_card.set_subtitle("no NVIDIA acceleration path")
+
+        self.start_capability_probe()
+
+    # ==================================================
+    # CAPABILITIES
+    # ==================================================
+
+    def start_capability_probe(self, refresh=False):
+        if self._capability_task is not None and self._capability_task.isRunning():
+            return
+        self.hardware_header.setText("● CHECKING ACCELERATION…")
+        self.hardware_header.setStyleSheet("color: #fbbf24;")
+        self.system_check_button.setEnabled(False)
+        self._capability_task = FunctionTask(lambda: get_report(refresh=refresh), self)
+        self._capability_task.succeeded.connect(self.capabilities_ready)
+        self._capability_task.failed.connect(
+            lambda message: self.hardware_header.setText(f"● CHECK FAILED: {message}")
+        )
+        self._capability_task.finished.connect(
+            lambda: self.system_check_button.setEnabled(True)
+        )
+        self._capability_task.start()
+
+    def capabilities_ready(self, report):
+        self.capabilities = report
+        self.hardware_header.setText(self.hardware_header_text())
+        if report.gpu_pipeline_ready:
+            color = "#22c55e"
+        elif report.ffmpeg_ok:
+            color = "#fbbf24"
+        else:
+            color = "#f87171"
+        self.hardware_header.setStyleSheet(f"color: {color};")
+        self.hardware_header.setToolTip("\n".join(report.summary_lines()))
+
+        if not report.ffmpeg_ok:
+            problems = report.ffmpeg_problems or [report.ffmpeg_error or "FFmpeg unavailable"]
+            self.show_message(
+                "Video extraction is unavailable:\n\n" + "\n".join(problems)
+                + "\n\nThe annotation tool still works."
+            )
+
+    def show_system_check(self):
+        report = self.capabilities
+        dialog = QDialog(self)
+        dialog.setWindowTitle("System Check")
+        dialog.resize(760, 460)
+        layout = QVBoxLayout(dialog)
+        text = QPlainTextEdit()
+        text.setReadOnly(True)
+        text.setStyleSheet("font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: 9pt;")
+        lines = [f"{APP_NAME} {APP_VERSION}", ""]
+        lines += report.summary_lines() if report else ["Capability check still running…"]
+        lines += ["", f"Logs: {log_dir()}"]
+        text.setPlainText("\n".join(lines))
+        layout.addWidget(text)
+        buttons = QDialogButtonBox()
+        recheck = buttons.addButton("RE-CHECK", QDialogButtonBox.ActionRole)
+        copy = buttons.addButton("COPY", QDialogButtonBox.ActionRole)
+        buttons.addButton(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject)
+        copy.clicked.connect(lambda: QApplication.clipboard().setText(text.toPlainText()))
+
+        def do_recheck():
+            dialog.accept()
+            self.start_capability_probe(refresh=True)
+
+        recheck.clicked.connect(do_recheck)
+        dialog.exec()
+
+    @staticmethod
+    def _disk_write_bytes():
+        # psutil returns None where disk counters are unavailable
+        # (containers, some VMs); v2.0 crashed at startup there.
+        try:
+            counters = psutil.disk_io_counters()
+        except Exception:
+            counters = None
+        return counters.write_bytes if counters else None
+
     # ==================================================
     # HARDWARE HEADER
     # ==================================================
 
     def hardware_header_text(self):
+        """Describe what the pipeline will really use, never just GPU presence."""
 
-        if self.hardware is None:
-            return "CPU MODE"
+        report = self.capabilities
 
-        vendor = getattr(
-            self.hardware,
-            "vendor",
-            "",
-        )
+        if report is None:
+            return "● CHECKING ACCELERATION…"
 
-        if vendor == "NVIDIA":
+        if not report.ffmpeg_ok:
+            return "● FFMPEG UNAVAILABLE — EXTRACTION DISABLED"
 
-            return (
-                "● NVIDIA ACCELERATION"
-            )
+        if report.gpu_pipeline_ready:
+            return "● NVIDIA NVDEC DECODE VERIFIED"
 
-        if vendor == "AMD":
+        if report.gpu_detected:
+            return f"● CPU MODE — NVIDIA GPU FOUND, NVDEC {report.nvdec_state.upper()}"
 
-            return (
-                "● AMD ACCELERATION"
-            )
+        if self.hardware is not None and getattr(self.hardware, "vendor", "") == "AMD":
+            return "● CPU MODE — AMD GPU (NO AMD PIPELINE)"
 
-        return "● CPU MODE"
+        return "● CPU MODE — NO NVIDIA GPU"
 
     # ==================================================
     # INPUT
@@ -856,9 +1049,17 @@ class MainWindow(QMainWindow):
 
         scanner = DatasetScanner()
 
-        self.dataset_info = scanner.scan(
-            directory
-        )
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.dataset_info = scanner.scan(
+                directory
+            )
+        except OSError as exc:
+            self.dataset_info = None
+            QApplication.restoreOverrideCursor()
+            self.show_message(f"Could not read the input directory:\n{exc}")
+            return
+        QApplication.restoreOverrideCursor()
 
         self.videos_card.set_value(
             self.dataset_info.video_count
@@ -868,14 +1069,55 @@ class MainWindow(QMainWindow):
             f"{self.dataset_info.total_gb:.2f} GB"
         )
 
-        self.frames_card.set_value(
-            "Calculating..."
-        )
-
         self.processed_card.set_value(
             f"0 / "
             f"{self.dataset_info.video_count}"
         )
+
+        if self.dataset_info.video_count == 0:
+            self.frames_card.set_value("0")
+            self.show_message(
+                "No supported video files were found in this folder or its "
+                "sub-folders.\n\nSupported: "
+                + ", ".join(sorted(e.lstrip(".") for e in VIDEO_EXTENSIONS))
+            )
+            return
+
+        self.frames_card.set_value(
+            "Calculating..."
+        )
+        self.start_frame_count(self.dataset_info.videos)
+
+    def start_frame_count(self, videos):
+        def count():
+            exporter = VideoExporter(mode="cpu")
+            total = 0
+            unreadable = []
+            for video in videos:
+                try:
+                    total += exporter.get_video_info(video).total_frames
+                except (VideoProbeError, OSError) as exc:
+                    unreadable.append(f"{video.name}: {str(exc).splitlines()[0]}")
+            return total, unreadable
+
+        task = FunctionTask(count, self)
+        task.succeeded.connect(self.frame_count_ready)
+        task.failed.connect(lambda message: self.frames_card.set_value("--"))
+        task.finished.connect(lambda: setattr(self, "_frame_count_task", None))
+        task.finished.connect(task.deleteLater)
+        self._frame_count_task = task
+        task.start()
+
+    def frame_count_ready(self, result):
+        total, unreadable = result
+        self.total_dataset_frames = total
+        self.frames_card.set_value(f"{total:,}")
+        if unreadable:
+            self.frames_card.set_subtitle(f"{len(unreadable)} unreadable file(s)")
+            self.frames_card.setToolTip("\n".join(unreadable))
+        else:
+            self.frames_card.set_subtitle("estimated frames")
+            self.frames_card.setToolTip("")
 
     # ==================================================
     # OUTPUT
@@ -929,11 +1171,43 @@ class MainWindow(QMainWindow):
 
             return
 
+        if self.worker is not None and self.worker.isRunning():
+            return
+
         videos = self.dataset_info.videos
+
+        if not videos:
+            self.show_message("The input directory contains no supported videos.")
+            return
+
+        report = self.capabilities
+        if report is not None and not report.ffmpeg_ok:
+            problems = report.ffmpeg_problems or [report.ffmpeg_error or "FFmpeg unavailable"]
+            self.show_message("Cannot export:\n\n" + "\n".join(problems))
+            return
 
         output_directory = Path(
             self.output_directory
         )
+
+        problem = self._output_directory_problem(output_directory)
+        if problem:
+            self.show_message(problem)
+            return
+
+        mode = self.mode_combo.currentData()
+        if mode == "gpu" and report is not None and not report.gpu_pipeline_ready:
+            answer = QMessageBox.question(
+                self,
+                "GPU not verified",
+                "GPU decoding did not pass the self-test on this system "
+                f"(NVDEC: {report.nvdec_state} {report.nvdec_detail}).\n\n"
+                "Exports in GPU-only mode will most likely fail. Switch to AUTO?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if answer == QMessageBox.Yes:
+                self.mode_combo.setCurrentIndex(0)
 
         job = self.job_manager.create_job(
             self.input_directory,
@@ -951,61 +1225,83 @@ class MainWindow(QMainWindow):
 
         self.total_output_bytes = 0
 
-        self.start_button.setEnabled(
-            False
-        )
+        self.failed_videos = {}
 
-        self.start_button.setText(
-            "EXPORTING..."
-        )
+        self._launch_worker(videos, output_directory)
 
-        self.pause_button.setEnabled(
-            True
-        )
+    def _output_directory_problem(self, output_directory: Path):
+        try:
+            output_directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return f"The output directory cannot be created:\n{exc}"
 
-        self.pause_button.setText(
-            "PAUSE EXPORT"
-        )
+        if not os.access(output_directory, os.W_OK):
+            return (
+                "The output directory is not writable. Choose a folder you "
+                f"have write access to.\n\n{output_directory}"
+            )
 
-        self.cancel_button.setEnabled(
-            True
-        )
+        try:
+            if output_directory.resolve() == Path(self.input_directory).resolve():
+                return (
+                    "Please choose an output directory different from the input "
+                    "directory, so extracted frames are kept apart from the videos."
+                )
+        except OSError:
+            pass
 
-        self.worker = ExportWorker(
+        return None
+
+    def _launch_worker(self, videos, output_directory):
+        self._job_ended = False
+        self.start_button.setEnabled(False)
+        self.start_button.setText("EXPORTING...")
+        self.pause_button.setEnabled(True)
+        self.pause_button.setText("PAUSE EXPORT")
+        self.cancel_button.setEnabled(True)
+        self.mode_combo.setEnabled(False)
+
+        worker = ExportWorker(
             videos,
             output_directory,
             self.job_id,
+            acceleration_mode=self.mode_combo.currentData(),
         )
 
-        self.worker.progress.connect(
-            self.update_progress
-        )
+        worker.progress.connect(self.update_progress)
+        worker.video_finished.connect(self.video_finished)
+        worker.video_failed.connect(self.video_failed)
+        worker.warning.connect(self.export_warning)
+        worker.job_finished.connect(self.export_finished)
+        worker.paused.connect(self.export_paused)
+        worker.stopped.connect(self.export_stopped)
+        worker.cancelled.connect(self.export_cancelled)
+        worker.error.connect(self.export_error)
+        # QThread.finished fires once the thread has really stopped; only
+        # then may the object be released (v2.0 dropped the reference from
+        # inside slots while run() was still executing).
+        worker.finished.connect(lambda w=worker: self._worker_thread_done(w))
 
-        self.worker.video_finished.connect(
-            self.video_finished
-        )
+        # Parent the thread to the window: Qt then owns the C++ object, so
+        # dropping the Python reference can never destroy a running thread.
+        worker.setParent(self)
 
-        self.worker.finished.connect(
-            self.export_finished
-        )
+        previous = self.worker
+        if previous is not None and not previous.isRunning():
+            previous.deleteLater()
 
-        self.worker.paused.connect(
-            self.export_paused
-        )
+        self.worker = worker
+        worker.start()
 
-        self.worker.stopped.connect(
-            self.export_stopped
-        )
-
-        self.worker.cancelled.connect(
-            self.export_cancelled
-        )
-
-        self.worker.error.connect(
-            self.export_error
-        )
-
-        self.worker.start()
+    def _worker_thread_done(self, worker):
+        self.mode_combo.setEnabled(True)
+        if self.worker is not worker:
+            worker.deleteLater()
+            return
+        if self._job_ended:
+            self.worker = None
+            worker.deleteLater()
+        # Paused/stopped: keep the finished thread object; RESUME replaces it.
 
     # ==================================================
     # PROGRESS
@@ -1101,10 +1397,22 @@ class MainWindow(QMainWindow):
         self.update_eta(
             frames,
             total_frames,
-            speed,
+            fps,
         )
 
-        self.update_output_size()
+        pipeline = data.get("pipeline")
+        if pipeline and pipeline != self.current_pipeline:
+            self.current_pipeline = pipeline
+            self.pipeline_label.setText(f"Pipeline: {pipeline}")
+            if pipeline == PIPELINE_GPU:
+                self.pipeline_label.setStyleSheet("color: #4ade80;")
+            elif pipeline == PIPELINE_CPU:
+                self.pipeline_label.setStyleSheet("color: #fbbf24;")
+            else:
+                self.pipeline_label.setStyleSheet("")
+
+        # Output size is refreshed by the 1 s timer on a worker thread;
+        # v2.0 rescanned the whole output tree here on every progress line.
 
     # ==================================================
     # ETA
@@ -1114,14 +1422,11 @@ class MainWindow(QMainWindow):
         self,
         frames,
         total_frames,
-        speed,
+        fps,
     ):
+        """ETA for the current video from FFmpeg's live frames-per-second."""
 
-        if (
-            total_frames <= 0
-            or speed <= 0
-            or self.export_start_time is None
-        ):
+        if total_frames <= 0 or fps <= 0:
 
             self.eta_card.set_value(
                 "--"
@@ -1134,39 +1439,12 @@ class MainWindow(QMainWindow):
             total_frames - frames,
         )
 
-        # Speed is relative to source
-        # playback speed.
-
-        remaining_seconds = (
-            remaining /
-            max(
-                1,
-                self.current_video_total_frames,
-            )
-        )
-
-        elapsed = (
-            time.monotonic()
-            - self.export_start_time
-        )
-
-        if frames > 0:
-
-            seconds_per_frame = (
-                elapsed /
-                frames
-            )
-
-            remaining_seconds = (
-                remaining *
-                seconds_per_frame
-            )
-
         self.eta_card.set_value(
             self.format_duration(
-                remaining_seconds
+                remaining / fps
             )
         )
+        self.eta_card.set_subtitle("current video")
 
     # ==================================================
     # VIDEO FINISHED
@@ -1186,6 +1464,19 @@ class MainWindow(QMainWindow):
                 f"{self.total_processed_videos} "
                 f"/ {total}"
             )
+
+    def video_failed(self, name, message):
+        # Collected and summarised at the end instead of one modal dialog
+        # per file; the batch continues with the next video.
+        self.failed_videos[name] = message
+        self.processed_card.set_subtitle(
+            f"videos completed • {len(self.failed_videos)} failed"
+        )
+        self.dataset_label_status(f"FAILED: {name} — continuing")
+
+    def export_warning(self, message):
+        log.warning(message)
+        self.pipeline_label.setToolTip(message)
 
     # ==================================================
     # PAUSE
@@ -1257,57 +1548,12 @@ class MainWindow(QMainWindow):
             job["output_directory"]
         )
 
-        self.start_button.setEnabled(
-            False
-        )
+        # Already-finished videos are re-reported (quickly, via their
+        # .complete marker) by the new worker, so the counter restarts.
+        self.total_processed_videos = 0
+        self.failed_videos = {}
 
-        self.pause_button.setEnabled(
-            True
-        )
-
-        self.pause_button.setText(
-            "PAUSE EXPORT"
-        )
-
-        self.cancel_button.setEnabled(
-            True
-        )
-
-        self.worker = ExportWorker(
-            videos,
-            output_directory,
-            self.job_id,
-        )
-
-        self.worker.progress.connect(
-            self.update_progress
-        )
-
-        self.worker.video_finished.connect(
-            self.video_finished
-        )
-
-        self.worker.finished.connect(
-            self.export_finished
-        )
-
-        self.worker.paused.connect(
-            self.export_paused
-        )
-
-        self.worker.stopped.connect(
-            self.export_stopped
-        )
-
-        self.worker.cancelled.connect(
-            self.export_cancelled
-        )
-
-        self.worker.error.connect(
-            self.export_error
-        )
-
-        self.worker.start()
+        self._launch_worker(videos, output_directory)
 
     # ==================================================
     # CANCEL
@@ -1350,6 +1596,12 @@ class MainWindow(QMainWindow):
         clicked = (
             dialog.clickedButton()
         )
+
+        if not self.worker.isRunning():
+            # Paused/stopped: there is no running thread to signal (v2.0
+            # called worker.cancel_delete(), a no-op here, and the UI stuck).
+            self._cancel_idle_job(clicked == delete_button, clicked == keep_button)
+            return
 
         if clicked == keep_button:
 
@@ -1398,6 +1650,46 @@ class MainWindow(QMainWindow):
                 self.dataset_label_status(
                     "Cancelling and deleting..."
                 )
+
+    def _cancel_idle_job(self, delete, keep):
+        if not (delete or keep):
+            return
+
+        job = self.job_manager.load_job(self.job_id) if self.job_id else None
+
+        if delete:
+            confirm = QMessageBox.question(
+                self,
+                "Delete Export",
+                "This will permanently delete all exported frames for the "
+                "video that was in progress.\n\nAre you sure?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if confirm != QMessageBox.Yes:
+                return
+
+            current = job.get("current_video") if job else None
+            if current:
+                videos = [Path(v) for v in job.get("videos", [])]
+                name = output_names(videos).get(Path(current), Path(current).stem)
+                target = Path(job["output_directory"]) / name
+                shutil.rmtree(target, ignore_errors=True)
+            if self.job_id:
+                self.job_manager.cancel_job(self.job_id)
+            self.export_cancelled()
+            self._release_idle_worker()
+            return
+
+        if self.job_id:
+            self.job_manager.update_job(self.job_id, status="stopped")
+        self.export_stopped()
+
+    def _release_idle_worker(self):
+        worker = self.worker
+        if worker is not None and not worker.isRunning():
+            self.worker = None
+            worker.deleteLater()
 
     # ==================================================
     # PAUSED
@@ -1481,7 +1773,7 @@ class MainWindow(QMainWindow):
             "EXPORT CANCELLED — OUTPUT DELETED"
         )
 
-        self.worker = None
+        self._job_ended = True
         self.job_id = None
 
         self.current_progress.setValue(
@@ -1492,7 +1784,10 @@ class MainWindow(QMainWindow):
     # COMPLETED
     # ==================================================
 
-    def export_finished(self):
+    def export_finished(self, summary=None):
+
+        summary = summary or {}
+        failed = summary.get("failed") or self.failed_videos
 
         self.start_button.setEnabled(
             True
@@ -1526,11 +1821,30 @@ class MainWindow(QMainWindow):
             "DONE"
         )
 
-        self.dataset_label_status(
-            "EXPORT COMPLETED"
-        )
+        self._job_ended = True
 
-        self.worker = None
+        if failed:
+            self.dataset_label_status(
+                f"EXPORT FINISHED — {len(failed)} VIDEO(S) FAILED"
+            )
+            details = "\n\n".join(
+                f"• {Path(name).name}\n{message}" for name, message in failed.items()
+            )
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Export finished with errors")
+            box.setText(
+                f"{summary.get('completed', 0)} of {summary.get('total', 0)} videos "
+                f"were exported. {len(failed)} could not be processed.\n\n"
+                "Frames from successful videos are complete. See details below "
+                f"or the log folder:\n{log_dir()}"
+            )
+            box.setDetailedText(details)
+            box.exec()
+        else:
+            self.dataset_label_status(
+                "EXPORT COMPLETED"
+            )
 
     # ==================================================
     # ERROR
@@ -1561,13 +1875,13 @@ class MainWindow(QMainWindow):
             "EXPORT ERROR"
         )
 
+        self._job_ended = True
+
         QMessageBox.critical(
             self,
             "Export Error",
-            message,
+            f"{message}\n\nLogs: {log_dir()}",
         )
-
-        self.worker = None
 
     # ==================================================
     # SYSTEM MONITOR
@@ -1615,55 +1929,47 @@ class MainWindow(QMainWindow):
         # DISK
         # ----------------------------------------------
 
-        disk = psutil.disk_io_counters()
+        written = self._disk_write_bytes()
 
         now = time.monotonic()
 
-        delta_bytes = (
-            disk.write_bytes -
-            self.previous_disk_bytes
-        )
+        if written is None or self.previous_disk_bytes is None:
 
-        delta_time = (
-            now -
-            self.previous_disk_time
-        )
-
-        if delta_time > 0:
-
-            write_speed = (
-                delta_bytes /
-                delta_time /
-                (1024 ** 2)
-            )
+            self.disk_card.set_value("N/A")
+            self.previous_disk_bytes = written
 
         else:
 
-            write_speed = 0
+            delta_bytes = max(0, written - self.previous_disk_bytes)
 
-        self.previous_disk_bytes = (
-            disk.write_bytes
-        )
+            delta_time = (
+                now -
+                self.previous_disk_time
+            )
+
+            write_speed = (
+                delta_bytes / delta_time / (1024 ** 2)
+                if delta_time > 0
+                else 0
+            )
+
+            self.previous_disk_bytes = written
+
+            if write_speed >= 1024:
+
+                self.disk_card.set_value(
+                    f"{write_speed / 1024:.2f} GB/s"
+                )
+
+            else:
+
+                self.disk_card.set_value(
+                    f"{write_speed:.0f} MB/s"
+                )
 
         self.previous_disk_time = now
 
-        if write_speed >= 1024:
-
-            self.disk_card.set_value(
-                f"{write_speed / 1024:.2f} GB/s"
-            )
-
-        else:
-
-            self.disk_card.set_value(
-                f"{write_speed:.0f} MB/s"
-            )
-
-        # ----------------------------------------------
-        # GPU
-        # ----------------------------------------------
-
-        self.update_nvidia_stats()
+        # GPU telemetry arrives from TelemetryThread.
 
         # ----------------------------------------------
         # Elapsed
@@ -1692,147 +1998,123 @@ class MainWindow(QMainWindow):
     # NVIDIA METRICS
     # ==================================================
 
-    def update_nvidia_stats(self):
+    def update_nvidia_stats(self, sample):
+        """Receives samples from TelemetryThread (never blocks the GUI)."""
 
-        if self.hardware is None:
+        if not sample:
+            self.gpu_usage_card.set_value("N/A")
             return
 
-        if getattr(
-            self.hardware,
-            "vendor",
-            "",
-        ) != "NVIDIA":
+        def fmt(value, suffix=""):
+            return "N/A" if value is None else f"{value:.0f}{suffix}"
 
-            self.gpu_card.set_value(
-                "N/A"
+        name = sample.get("name", "NVIDIA GPU")
+        self.gpu_card.set_value(name.replace("NVIDIA GeForce ", ""))
+        self.gpu_card.setToolTip(name)
+        if self.capabilities is not None:
+            self.gpu_card.set_subtitle(
+                "NVDEC verified" if self.capabilities.gpu_pipeline_ready
+                else f"NVDEC {self.capabilities.nvdec_state}"
             )
 
-            self.gpu_usage_card.set_value(
-                "N/A"
-            )
+        self.gpu_usage_card.set_value(fmt(sample.get("gpu"), "%"))
+        decoder = sample.get("decoder")
+        self.gpu_usage_card.set_subtitle(
+            "GPU load" if decoder is None else f"GPU load • NVDEC {decoder:.0f}%"
+        )
 
-            self.vram_card.set_value(
-                "N/A"
-            )
+        used, total = sample.get("vram_used"), sample.get("vram_total")
+        if used is not None:
+            self.vram_card.set_value(f"{used / 1024:.1f} GB")
+        if total is not None:
+            self.vram_card.set_subtitle(f"of {total / 1024:.1f} GB")
 
-            self.temperature_card.set_value(
-                "N/A"
-            )
-
-            return
-
-        try:
-
-            command = [
-                "nvidia-smi",
-                "--query-gpu="
-                "name,"
-                "utilization.gpu,"
-                "memory.used,"
-                "memory.total,"
-                "temperature.gpu",
-                "--format=csv,noheader,nounits",
-            ]
-
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=1,
-            )
-
-            if result.returncode != 0:
-                return
-
-            values = [
-                x.strip()
-                for x in result.stdout.split(
-                    ","
-                )
-            ]
-
-            if len(values) < 5:
-                return
-
-            name = values[0]
-            gpu_util = values[1]
-            memory_used = values[2]
-            memory_total = values[3]
-            temperature = values[4]
-
-            self.gpu_card.set_value(
-                name
-            )
-
-            self.gpu_usage_card.set_value(
-                f"{gpu_util}%"
-            )
-
-            self.vram_card.set_value(
-                f"{float(memory_used) / 1024:.1f} GB"
-            )
-
-            self.vram_card.set_subtitle(
-                f"of "
-                f"{float(memory_total) / 1024:.1f} GB"
-            )
-
-            self.temperature_card.set_value(
-                f"{temperature}°C"
-            )
-
-        except Exception:
-
-            pass
+        self.temperature_card.set_value(fmt(sample.get("temperature"), "°C"))
 
     # ==================================================
     # OUTPUT SIZE
     # ==================================================
 
-    def update_output_size(self):
+    def update_output_size(self, force=False):
+        """Refresh the OUTPUT SIZE card on a worker thread (at most every 3 s)."""
 
         if not self.output_directory:
             return
 
-        try:
+        now = time.monotonic()
+        if not force and now - self._last_output_size_update < 3.0:
+            return
 
-            root = Path(
-                self.output_directory
+        if self._output_size_task is not None and self._output_size_task.isRunning():
+            return
+
+        root = Path(self.output_directory)
+        if not root.exists():
+            return
+
+        self._last_output_size_update = now
+        task = FunctionTask(lambda: directory_jpeg_bytes(root), self)
+        task.succeeded.connect(self._output_size_ready)
+        task.finished.connect(lambda: setattr(self, "_output_size_task", None))
+        task.finished.connect(task.deleteLater)
+        self._output_size_task = task
+        task.start()
+
+    def _output_size_ready(self, total_bytes):
+        self.total_output_bytes = total_bytes
+        self.output_size_card.set_value(f"{total_bytes / (1024 ** 3):.2f} GB")
+
+    # ==================================================
+    # SHUTDOWN
+    # ==================================================
+
+    def closeEvent(self, event):
+        if self.annotation_tab.has_unsaved_changes():
+            answer = QMessageBox.question(
+                self,
+                "Unsaved annotations",
+                "Save annotation changes to annotations.csv before closing?",
+                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+                QMessageBox.Save,
             )
-
-            if not root.exists():
+            if answer == QMessageBox.Cancel:
+                event.ignore()
+                return
+            if answer == QMessageBox.Save and not self.annotation_tab.save_annotations():
+                event.ignore()
                 return
 
-            total_bytes = 0
-
-            for file in root.rglob(
-                "*.jpg"
-            ):
-
-                try:
-                    total_bytes += (
-                        file.stat().st_size
-                    )
-
-                except OSError:
-                    pass
-
-            self.total_output_bytes = (
-                total_bytes
+        worker = self.worker
+        if worker is not None and worker.isRunning():
+            answer = QMessageBox.question(
+                self,
+                "Export in progress",
+                "An export is running. Stop it and keep the frames extracted so "
+                "far? It can be resumed later from the same output folder.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
             )
+            if answer != QMessageBox.Yes:
+                event.ignore()
+                return
+            worker.stop_keep()
+            # FFmpeg is asked to quit gracefully (up to ~10 s worst case).
+            worker.wait(20000)
 
-            gb = (
-                total_bytes /
-                (1024 ** 3)
-            )
+        if self.telemetry is not None:
+            self.telemetry.stop()
+            self.telemetry.wait(3000)
 
-            self.output_size_card.set_value(
-                f"{gb:.2f} GB"
-            )
+        for task in (self._capability_task, self._frame_count_task, self._output_size_task):
+            try:
+                if task is not None and task.isRunning():
+                    task.wait(10000)
+            except RuntimeError:
+                pass  # already deleted
 
-        except Exception:
-
-            pass
+        self.monitor_timer.stop()
+        self.annotation_tab.shutdown()
+        super().closeEvent(event)
 
     # ==================================================
     # STATUS

@@ -1,0 +1,6 @@
+# Runtime dependencies (the installers bundle these; end users never pip install).
+# Only the Essentials wheel is needed (QtCore/QtGui/QtWidgets); the full
+# "PySide6" meta-package adds WebEngine etc. and ~500 MB to the installers.
+PySide6-Essentials==6.12.0
+psutil==7.2.2
+Pillow==13.0.0

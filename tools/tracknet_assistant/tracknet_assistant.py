@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import math
+import os
 from pathlib import Path
 
 import cv2
@@ -42,20 +43,27 @@ def load_annotations(csv_path):
     return annotations
 
 
-def load_tracknet_model(weights_path):
+def load_tracknet_model(weights_path, tracknet_dir):
 
     # Import official TrackNet V1 model.
     import sys
 
-    tracknet_dir = Path(
-        r"S:\Thotta_Nee_Keta\Projects\TrackNet-V1"
-    )
+    # v2.0 hard-coded the author's own checkout path. The location now
+    # comes from --tracknet-dir or the TRACKNET_V1_DIR environment variable.
+    tracknet_dir = Path(tracknet_dir)
 
     model_dir = (
         tracknet_dir
         / "Code_Python3"
         / "TrackNet_One_Frame_Input"
     )
+
+    if not (model_dir / "Models").is_dir():
+        raise SystemExit(
+            f"TrackNet V1 model code not found in {model_dir}. "
+            "Pass --tracknet-dir pointing at a clone of the official "
+            "TrackNet V1 repository (or set TRACKNET_V1_DIR)."
+        )
 
     sys.path.insert(
         0,
@@ -370,7 +378,19 @@ def main():
         required=True,
     )
 
+    parser.add_argument(
+        "--tracknet-dir",
+        default=os.environ.get("TRACKNET_V1_DIR"),
+        help=(
+            "Path to a clone of the official TrackNet V1 repository "
+            "(contains Code_Python3/). Defaults to $TRACKNET_V1_DIR."
+        ),
+    )
+
     args = parser.parse_args()
+
+    if not args.tracknet_dir:
+        parser.error("--tracknet-dir (or TRACKNET_V1_DIR) is required.")
 
     frames_dir = Path(
         args.frames
@@ -440,7 +460,8 @@ def main():
     )
 
     model = load_tracknet_model(
-        weights_path
+        weights_path,
+        args.tracknet_dir,
     )
 
     print(

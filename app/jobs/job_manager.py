@@ -3,20 +3,17 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from app.utils.logging_setup import get_logger
+from app.utils.paths import jobs_dir
+
+log = get_logger("jobs")
+
 
 class JobManager:
 
     def __init__(self):
-        self.jobs_directory = (
-            Path.home() /
-            ".frame-generator" /
-            "jobs"
-        )
-
-        self.jobs_directory.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
+        # ~/.frame-generator/jobs (unchanged from v1/v2.0).
+        self.jobs_directory = jobs_dir()
 
     # --------------------------------------------------
     # Create / update job
@@ -214,17 +211,23 @@ class JobManager:
             path.with_suffix(".tmp")
         )
 
-        with temporary.open(
-            "w",
-            encoding="utf-8",
-        ) as file:
+        try:
+            with temporary.open(
+                "w",
+                encoding="utf-8",
+            ) as file:
 
-            json.dump(
-                job,
-                file,
-                indent=2,
-            )
+                json.dump(
+                    job,
+                    file,
+                    indent=2,
+                )
 
-        # Atomic replacement prevents a partially
-        # written job file if the application crashes.
-        temporary.replace(path)
+            # Atomic replacement prevents a partially
+            # written job file if the application crashes.
+            temporary.replace(path)
+
+        except OSError:
+            # Job state is a convenience for resuming; failing to write it
+            # (full or read-only profile) must not abort an export.
+            log.exception("Could not save job state %s", path)

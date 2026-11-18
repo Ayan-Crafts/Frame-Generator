@@ -14,6 +14,7 @@ class ResumeInfo:
 class ResumeManager:
 
     COMPLETE_MARKER = ".complete"
+    TAIL_FRAMES_TO_VERIFY = 8
 
     def inspect(self, output_directory: Path) -> ResumeInfo:
 
@@ -50,27 +51,36 @@ class ResumeManager:
         expected = 1
         last_valid = 0
 
+        # Find the contiguous run 1..N first (cheap), then validate. FFmpeg
+        # writes frames sequentially, so a partially written file can only
+        # exist at the tail of a run; frames before it were validated when
+        # that earlier run ended. The tail gets a full decode check, every
+        # other frame a cheap size check.
+        contiguous = []
         for frame_number in frames:
-
             if frame_number != expected:
                 break
+            contiguous.append(frame_number)
+            expected += 1
+
+        tail_start = max(0, len(contiguous) - self.TAIL_FRAMES_TO_VERIFY)
+
+        for position, frame_number in enumerate(contiguous):
 
             frame_path = (
                 output_directory /
                 f"{frame_number:06d}.jpg"
             )
 
-            if not self._is_valid_image(
-                frame_path
-            ):
-                self._remove_from_frame(
-                    output_directory,
-                    frame_number,
-                )
+            if position >= tail_start:
+                valid = self._is_valid_image(frame_path)
+            else:
+                valid = self._has_content(frame_path)
+
+            if not valid:
                 break
 
             last_valid = frame_number
-            expected += 1
 
         # Remove anything after the valid sequence.
         self._remove_from_frame(
@@ -131,21 +141,39 @@ class ResumeManager:
 
         return sorted(numbers)
 
+    @staticmethod
+    def _has_content(path: Path) -> bool:
+        try:
+            return path.stat().st_size > 0
+        except OSError:
+            return False
+
     def _is_valid_image(
         self,
         path: Path,
     ) -> bool:
 
+        # PIL's verify() does not decode JPEG data, so a file truncated by
+        # an interrupted FFmpeg run would pass it. A complete JPEG ends with
+        # the EOI marker (FF D9); check that, then fully decode.
         try:
+            size = path.stat().st_size
+            if size < 4:
+                return False
+            with path.open("rb") as handle:
+                handle.seek(-2, 2)
+                if handle.read(2) != b"\xff\xd9":
+                    return False
 
             with Image.open(path) as image:
-                image.verify()
+                image.load()
 
             return True
 
         except (
             OSError,
             ValueError,
+            SyntaxError,
         ):
             return False
 

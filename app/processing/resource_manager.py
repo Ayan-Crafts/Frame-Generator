@@ -1,8 +1,12 @@
 import os
 import shutil
-import subprocess
-from app.utils.ffmpeg import get_ffmpeg_path
+from pathlib import Path
+
 import psutil
+
+from app.hardware.capabilities import find_nvidia_smi
+from app.utils import proc
+from app.utils.ffmpeg import FFmpegNotFoundError, probe_ffmpeg
 
 
 class ResourceManager:
@@ -16,11 +20,16 @@ class ResourceManager:
 
     def nvidia_info(self):
 
+        smi = find_nvidia_smi()
+
+        if not smi:
+            return None
+
         try:
 
-            result = subprocess.run(
+            result = proc.run(
                 [
-                    "nvidia-smi",
+                    smi,
                     "--query-gpu="
                     "name,"
                     "utilization.gpu,"
@@ -29,15 +38,13 @@ class ResourceManager:
                     "temperature.gpu",
                     "--format=csv,noheader,nounits",
                 ],
-                capture_output=True,
-                text=True,
-                timeout=2,
+                timeout=3,
             )
 
-            if result.returncode != 0:
+            if result is None or result.returncode != 0:
                 return None
 
-            line = result.stdout.strip()
+            line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
 
             if not line:
                 return None
@@ -60,9 +67,8 @@ class ResourceManager:
             }
 
         except (
-            FileNotFoundError,
-            subprocess.TimeoutExpired,
             ValueError,
+            IndexError,
         ):
             return None
 
@@ -72,28 +78,11 @@ class ResourceManager:
 
     def amd_available(self):
 
+        # Uses the cached FFmpeg probe instead of spawning
+        # "ffmpeg -encoders" for every video.
         try:
-
-            result = subprocess.run(
-                [
-                    get_ffmpeg_path(),
-                    "-hide_banner",
-                    "-encoders",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=3,
-            )
-
-            return (
-                "amf" in
-                result.stdout.lower()
-            )
-
-        except (
-            FileNotFoundError,
-            subprocess.TimeoutExpired,
-        ):
+            return "amf" in probe_ffmpeg().hwaccels
+        except FFmpegNotFoundError:
             return False
 
     # --------------------------------------------------
@@ -133,7 +122,7 @@ class ResourceManager:
     # System resources
     # --------------------------------------------------
 
-    def system_info(self):
+    def system_info(self, disk_path=None):
 
         memory = psutil.virtual_memory()
 
@@ -148,17 +137,11 @@ class ResourceManager:
             )
         )
 
-        # Determine the disk containing the
-        # current Python process.
-        disk_path = os.getcwd()
-
-        disk = shutil.disk_usage(
-            disk_path
-        )
-
-        free_disk_gb = (
-            disk.free /
-            (1024 ** 3)
+        # Measure the disk that frames are written to. (Previously the
+        # current working directory was used, which in an installed app is
+        # usually the install drive, not the output drive.)
+        free_disk_gb = free_space_gb(
+            disk_path or os.getcwd()
         )
 
         return {
@@ -173,9 +156,9 @@ class ResourceManager:
     # Dynamic profile
     # --------------------------------------------------
 
-    def get_profile(self):
+    def get_profile(self, output_directory=None):
 
-        system = self.system_info()
+        system = self.system_info(output_directory)
         gpu = self.detect_gpu()
 
         threads = system["cpu_threads"]
@@ -301,8 +284,19 @@ class ResourceManager:
             "cpu_percent": cpu,
             "disk_free_gb": disk,
         }
-    def ffmpeg_threads(self):
+    def ffmpeg_threads(self, output_directory=None):
 
-        profile = self.get_profile()
+        profile = self.get_profile(output_directory)
 
         return profile["ffmpeg_threads"]
+
+
+def free_space_gb(path) -> float:
+    """Free space on the volume containing ``path`` (walks up to an existing parent)."""
+    candidate = Path(path)
+    while not candidate.exists() and candidate.parent != candidate:
+        candidate = candidate.parent
+    try:
+        return shutil.disk_usage(candidate).free / (1024 ** 3)
+    except OSError:
+        return float("inf")

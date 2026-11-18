@@ -2,7 +2,9 @@ from pathlib import Path
 import csv
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal, QSize
+import os
+
+from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QPixmap, QPainter, QPen, QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QWidget,
@@ -188,6 +190,36 @@ class AnnotationImage(QWidget):
         self.visibility = 1
         self.update()
         self.ball_clicked.emit(x, y)
+        self.setFocus()
+
+    def keyPressEvent(self, event):
+        """Keyboard navigation (documented in the README).
+
+        Restored: this handler existed in commit 85d9ac5 and was lost in a
+        later UI refactor, although the hooks below were still wired up.
+        """
+        key = event.key()
+        if key == Qt.Key_Left:
+            self.jump_frames(-10 if event.modifiers() & Qt.ShiftModifier else -1)
+            event.accept()
+            return
+        if key == Qt.Key_Right:
+            self.jump_frames(10 if event.modifiers() & Qt.ShiftModifier else 1)
+            event.accept()
+            return
+        if key == Qt.Key_Space and self.play_button is not None:
+            self.play_button.setChecked(not self.play_button.isChecked())
+            event.accept()
+            return
+        if (
+            key in (Qt.Key_Return, Qt.Key_Enter)
+            and self.save_next_button is not None
+            and self.save_next_button.isEnabled()
+        ):
+            self.save_and_next()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -251,6 +283,7 @@ class AnnotationTab(QWidget):
         self._play_timer = None
         self._updating_slider = False
         self._loading_directory = False
+        self._dirty = False
 
         self.build_ui()
 
@@ -447,6 +480,8 @@ class AnnotationTab(QWidget):
         self.build_ranges_page()
         self.build_stats_page()
         self.build_settings_page()
+
+        self.tabs.currentChanged.connect(self._on_tab_changed)
 
         self.update_all()
 
@@ -667,7 +702,7 @@ class AnnotationTab(QWidget):
         toolbar.addWidget(self.csv_path_label, 1)
 
         refresh = QPushButton("REFRESH TABLE")
-        refresh.clicked.connect(self.refresh_csv_table)
+        refresh.clicked.connect(lambda: self.refresh_csv_table(force=True))
         toolbar.addWidget(refresh)
 
         save = QPushButton("SAVE CSV")
@@ -794,17 +829,43 @@ class AnnotationTab(QWidget):
         self.load_frames()
 
     def load_frames(self):
-        self.frames = sorted(
-            [
-                p for p in self.frame_directory.iterdir()
-                if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}
-            ],
-            key=lambda p: self._frame_sort_key(p.name),
-        )
+        if self.has_unsaved_changes():
+            answer = QMessageBox.question(
+                self,
+                "Unsaved annotations",
+                "Save annotation changes for the current folder first?",
+                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+                QMessageBox.Save,
+            )
+            if answer == QMessageBox.Cancel:
+                return
+            if answer == QMessageBox.Save:
+                self.save_annotations()
 
-        if not self.frames:
-            QMessageBox.warning(self, "Annotation", "No image frames were found.")
+        directory = self.frame_directory
+        try:
+            frames = sorted(
+                [
+                    p for p in directory.iterdir()
+                    if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}
+                ],
+                key=lambda p: self._frame_sort_key(p.name),
+            )
+        except OSError as error:
+            QMessageBox.warning(self, "Annotation", f"Could not read the folder:\n{error}")
             return
+
+        if not frames:
+            QMessageBox.warning(
+                self,
+                "Annotation",
+                "No image frames (.jpg, .jpeg, .png, .bmp) were found in this folder.\n\n"
+                "Select a single video's frame folder, e.g. <output>/<video name>/.",
+            )
+            return
+
+        self.frames = frames
+        self._dirty = False
 
         self.csv_path = self.frame_directory / "annotations.csv"
         self.load_annotations()
@@ -880,11 +941,18 @@ class AnnotationTab(QWidget):
             QMessageBox.warning(self, "Annotation", f"Could not load annotations:\n{error}")
 
     def save_annotations(self):
-        if not self.csv_path:
-            return
+        """Write annotations.csv atomically.
 
+        The CSV is written to a temporary file and swapped in with
+        os.replace(), so a crash or full disk mid-write can no longer leave
+        a truncated annotations.csv (v2.0 rewrote the file in place).
+        """
+        if not self.csv_path:
+            return False
+
+        temporary = self.csv_path.with_name(self.csv_path.name + ".tmp")
         try:
-            with open(self.csv_path, "w", newline="", encoding="utf-8") as file:
+            with open(temporary, "w", newline="", encoding="utf-8") as file:
                 writer = csv.DictWriter(file, fieldnames=CSV_COLUMNS)
                 writer.writeheader()
 
@@ -895,8 +963,25 @@ class AnnotationTab(QWidget):
                     writer.writerow(
                         {key: annotation.get(key, "") for key in CSV_COLUMNS}
                     )
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporary, self.csv_path)
+            self._dirty = False
+            return True
         except Exception as error:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
             QMessageBox.critical(self, "Annotation", f"Could not save annotations:\n{error}")
+            return False
+
+    def has_unsaved_changes(self):
+        return bool(self._dirty and self.csv_path)
+
+    def shutdown(self):
+        if self._play_timer is not None:
+            self._play_timer.stop()
 
     # ------------------------------------------------------------------
     # Current frame
@@ -1062,6 +1147,7 @@ class AnnotationTab(QWidget):
             "status": status,
         }
         self.pending_visibility_mode = None
+        self._dirty = True
         self.update_all()
         self._autosave_if_enabled()
 
@@ -1077,6 +1163,7 @@ class AnnotationTab(QWidget):
             annotation["source"] = "MANUAL"
             annotation["confidence"] = 1.0
             self.pending_visibility_mode = None
+            self._dirty = True
             self.update_all()
             self._autosave_if_enabled()
             return
@@ -1096,6 +1183,7 @@ class AnnotationTab(QWidget):
             annotation["source"] = "MANUAL"
             annotation["confidence"] = 1.0
             self.pending_visibility_mode = None
+            self._dirty = True
             self.update_all()
             self._autosave_if_enabled()
             return
@@ -1125,6 +1213,7 @@ class AnnotationTab(QWidget):
             "confidence": 1.0,
             "status": STATUS_OCCLUDED,
         }
+        self._dirty = True
         self.update_all()
         self._autosave_if_enabled()
 
@@ -1144,6 +1233,7 @@ class AnnotationTab(QWidget):
             "confidence": 1.0,
             "status": STATUS_OOB,
         }
+        self._dirty = True
         self.update_all()
         self._autosave_if_enabled()
 
@@ -1169,6 +1259,7 @@ class AnnotationTab(QWidget):
             annotation["source"] = "MANUAL"
             annotation["confidence"] = 1.0
             self.pending_visibility_mode = None
+            self._dirty = True
             self.update_all()
             self._autosave_if_enabled()
             return
@@ -1325,17 +1416,22 @@ class AnnotationTab(QWidget):
         self.update_navigation_state()
 
     def toggle_play(self, playing):
+        # v2.0 initialised _play_timer = None in __init__ and then tested
+        # hasattr(), which is always true, so PLAY raised AttributeError.
         if playing:
+            if not self.frames:
+                self.play_button.setChecked(False)
+                return
             self.play_button.setText("⏸ PAUSE")
-            if not hasattr(self, "_play_timer"):
-                from PySide6.QtCore import QTimer
+            if self._play_timer is None:
                 self._play_timer = QTimer(self)
                 self._play_timer.setInterval(80)
                 self._play_timer.timeout.connect(self._play_next_frame)
             self._play_timer.start()
+            self.image_viewer.setFocus()
         else:
             self.play_button.setText("▶ PLAY")
-            if hasattr(self, "_play_timer"):
+            if self._play_timer is not None:
                 self._play_timer.stop()
 
     def _play_next_frame(self):
@@ -1610,7 +1706,28 @@ class AnnotationTab(QWidget):
     # CSV table
     # ------------------------------------------------------------------
 
-    def refresh_csv_table(self):
+    def refresh_csv_table(self, force=False):
+        """Rebuild the CSV/RANGES tables, lazily.
+
+        v2.0 rebuilt both tables (O(frames) each) on every click. They are
+        now rebuilt only while visible, when their tab is opened, or when
+        REFRESH TABLE is pressed.
+        """
+        current = self.tabs.currentWidget() if hasattr(self, "tabs") else None
+        if force or current is self.csv_page:
+            self._rebuild_csv_table()
+        if force or current is self.ranges_page:
+            self.update_ranges()
+
+    def _on_tab_changed(self, _index):
+        current = self.tabs.currentWidget()
+        if current is self.csv_page:
+            self._rebuild_csv_table()
+        elif current is self.ranges_page:
+            self.update_ranges()
+
+    def _rebuild_csv_table(self):
+        self.csv_table.setUpdatesEnabled(False)
         self.csv_table.setRowCount(0)
 
         for frame in self.frames:
@@ -1628,6 +1745,7 @@ class AnnotationTab(QWidget):
                 self.csv_table.setItem(row, col, QTableWidgetItem(str(value)))
 
         self.csv_table.resizeColumnsToContents()
+        self.csv_table.setUpdatesEnabled(True)
 
     def csv_row_clicked(self, row, _column):
         item = self.csv_table.item(row, 0)
@@ -1649,7 +1767,6 @@ class AnnotationTab(QWidget):
     def update_all(self):
         self.show_current_frame()
         self.update_statistics()
-        self.update_ranges()
         self.refresh_csv_table()
 
         if self.csv_path:
@@ -1724,6 +1841,7 @@ class AnnotationTab(QWidget):
             "confidence": float(confidence),
             "status": status,
         }
+        self._dirty = True
         self.update_all()
 
     def mark_model_low_confidence(self, frame_name, confidence):
@@ -1745,4 +1863,5 @@ class AnnotationTab(QWidget):
             "confidence": float(confidence),
             "status": STATUS_REVIEW,
         }
+        self._dirty = True
         self.update_all()
