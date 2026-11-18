@@ -84,7 +84,7 @@ Name: "ffmpeg"; Description: "Bundled FFmpeg with NVIDIA NVDEC support (recommen
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "ffmpeg\*,README-PORTABLE.txt"; Components: app; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "ffmpeg\*,README-PORTABLE.txt"; Components: app; Flags: ignoreversion recursesubdirs
 Source: "{#FFmpegDir}\ffmpeg.exe"; DestDir: "{app}\ffmpeg"; Components: ffmpeg; Flags: ignoreversion
 Source: "{#FFmpegDir}\ffprobe.exe"; DestDir: "{app}\ffmpeg"; Components: ffmpeg; Flags: ignoreversion
 Source: "{#FFmpegDir}\LICENSE*"; DestDir: "{app}\ffmpeg"; Components: ffmpeg; Flags: ignoreversion skipifsourcedoesntexist
@@ -278,12 +278,21 @@ begin
     BuildSummary);
 end;
 
+function SelectionGivenOnCommandLine: Boolean;
+begin
+  { Explicit /COMPONENTS= or /TYPE= (e.g. silent deployments) always wins
+    over the automatic FFmpeg default. CurPageChanged also runs in silent mode. }
+  Result := (ExpandConstant('{param:COMPONENTS|}') <> '') or
+            (ExpandConstant('{param:TYPE|}') <> '');
+end;
+
 procedure CurPageChanged(CurPageID: Integer);
 begin
   { Pre-select the bundled FFmpeg only when no compatible one exists; do it
     once so a user's own choice is never overwritten. Not on upgrades: the
     previous selection is kept by Inno Setup. }
-  if (CurPageID = wpSelectComponents) and (not ComponentsDefaulted) then
+  if (CurPageID = wpSelectComponents) and (not ComponentsDefaulted) and
+     (not SelectionGivenOnCommandLine) then
   begin
     ComponentsDefaulted := True;
     if WizardForm.PrevAppDir = '' then

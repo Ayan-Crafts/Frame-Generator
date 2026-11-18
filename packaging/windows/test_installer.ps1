@@ -55,6 +55,7 @@ function Install([string]$components, [string]$logName) {
     return $p.ExitCode
 }
 
+try {
 # ------------------------------------------------------------------ 1-3
 Log "--- install (app + bundled FFmpeg)"
 $t0 = Get-Date
@@ -83,6 +84,7 @@ $media = Join-Path $WorkDir "média in\clip dir"
 $out = Join-Path $WorkDir "frames out ✓"
 New-Item -ItemType Directory -Force $media | Out-Null
 $ff = Join-Path $InstallDir "ffmpeg\ffmpeg.exe"
+if (-not (Test-Path $ff)) { $ff = (Get-Command ffmpeg.exe -ErrorAction Stop).Source }
 & $ff -hide_banner -loglevel error -y -f lavfi -i "testsrc2=size=1280x720:rate=50" -t 4 -c:v mpeg4 -q:v 3 (Join-Path $media "vidéo test.avi")
 foreach ($mode in "auto", "cpu") {
     Check "installed CLI extract ($mode) to unicode/space path" {
@@ -126,6 +128,9 @@ if ($systemFF) {
     Log "SKIP  no FFmpeg on PATH; 'reuse system FFmpeg' not tested"
 }
 
+} catch {
+    $script:fail++; Log "FAIL  aborted: $($_.Exception.Message)"
+} finally {
 # ------------------------------------------------------------------ 6
 Log "--- uninstall"
 $uninst = Join-Path $InstallDir "unins000.exe"
@@ -141,6 +146,7 @@ Check "user logs preserved (silent uninstall keeps data)" { Test-Path (Join-Path
 
 # Clean up what this test created in the real profile.
 if (-not $hadUserData -and (Test-Path $UserData)) { Remove-Item -Recurse -Force $UserData }
+}
 
 Log "--- RESULT: $script:pass passed, $script:fail failed"
 if ($script:fail -gt 0) { exit 1 }
